@@ -43,10 +43,7 @@ async function getWorker() {
       // A real URL (not a blob:) so the worker's own requests go through the service worker cache offline.
       workerBlobURL: false,
     });
-    await w.setParameters({
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
-      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-    });
+    void PSM;
     return w;
   })();
   try {
@@ -98,8 +95,9 @@ export function parsePlate(text: string): Omit<PlateRead, 'confidence'> {
     .map((i) => parts[i])
     .find((p) => p && p !== best.p && (/^\d{1,2}$/.test(p) || /^[A-Z]{1,2}$/.test(p)));
 
-  const guessEmirate = emirate ?? (near && /^[A-Z]+$/.test(near) ? 'DXB' : null);
-  return { code: plausibleCode(near ?? '', guessEmirate), number: best.p, emirate: guessEmirate, raw: text.trim() };
+  // The emirate is only set when its NAME was read — guessing it from a (possibly misread) code
+  // turned an Abu Dhabi "7" read as "B" into a Dubai plate in testing.
+  return { code: plausibleCode(near ?? '', emirate), number: best.p, emirate, raw: text.trim() };
 }
 
 /**
@@ -110,15 +108,33 @@ export function parsePlate(text: string): Omit<PlateRead, 'confidence'> {
  */
 const LOOKALIKE: Record<string, string> = { O: '0', D: '0', Q: '0', I: '1', L: '1', T: '1', Z: '2', S: '5', G: '6', B: '8' };
 function plausibleCode(code: string, emirate: string | null) {
-  if (!code || emirate === 'DXB') return code;
+  // Unknown emirate (its name is small and often not read): keep the code exactly as read —
+  // letters may be a Dubai code. The guard sees it and picks the emirate.
+  if (!code || !emirate || emirate === 'DXB') return code;
   const fixed = code.replace(/[A-Z]/g, (ch) => LOOKALIKE[ch] ?? ch);
   return /^\d{1,2}$/.test(fixed) ? fixed : '';
 }
 
+/**
+ * Page-layout modes, tried in order until one yields a plate number.
+ * Measured on the test plates (test-plates/): "single block" (6) read 7 of 8
+ * numbers and the Dubai letter codes; "sparse text" (11) — the obvious choice —
+ * returned nothing on 5 of 8. 11 and 12 stay as fallbacks for odd layouts.
+ * Each extra pass costs ~0.5 s on a phone, and only runs when the first fails.
+ */
+const PASSES = ['6', '11', '12'] as const;
+
 export async function readPlate(photo: Blob): Promise<PlateRead> {
   const worker = await getWorker();
   const canvas = await ocrCanvas(photo);
-  const { data } = await worker.recognize(canvas);
-  const parsed = parsePlate(data.text || '');
-  return { ...parsed, confidence: Math.round(data.confidence ?? 0) };
+  let fallback: PlateRead | null = null;
+  for (const psm of PASSES) {
+    await worker.setParameters({ tessedit_pageseg_mode: psm as never });
+    const { data } = await worker.recognize(canvas);
+    console.debug(`[plate-ocr] psm ${psm} raw:`, JSON.stringify(data.text), 'conf', data.confidence);
+    const read = { ...parsePlate(data.text || ''), confidence: Math.round(data.confidence ?? 0) };
+    if (read.number) return read;
+    fallback ||= read;
+  }
+  return fallback!;
 }
