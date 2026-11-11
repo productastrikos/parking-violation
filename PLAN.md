@@ -2,6 +2,15 @@
 
 **Status:** built and tested end-to-end (11 Nov 2026) · **Demo:** 12 Nov 2026 (morning), shared with Amit · run/demo: `DEMO.md` · deploy: `DEPLOY.md`
 
+### Round 2 (11 Nov evening) — added on request
+- **Demo GPS** (MBKS pattern): phones default to a labelled DEMO position inside the guard's Abu Dhabi patrol area; a real fix outside the UAE switches to demo automatically; Settings toggles Real GPS. Guards' live positions go to the control-room map.
+- **Plate reading improved**: plate located in the photo, cropped, binarised and read several ways with voting (7/8 test plates' numbers vs 5/8 before); **live camera scanner** that locks when frames agree; optional server-side vision-model double-check.
+- **AI use cases** (`shared/intel.js`, rules-based, explainable; a model only words the brief): forecast by area and hour, hotspots, repeat-offender escalation (+ offline watchlist warning on the phone), duplicates/anomalies, guard deployment, ranked advisory with reasons. Header AI Advisory button + popover, overview panel, full AI Advisory page; Patrol (AI) tab in the app.
+- **Realistic app UI**: material layer (textured ground, lit cards, recessed inputs, pressable controls, native tab bar, bottom sheets, splash), dark + light.
+- **Dashboard sidebar**: Dashboard · Violations · AI Advisory · Field Team.
+- **View & edit records**: guard edits/deletes before upload, reports a mistake after upload (queued offline); control room edits with a mandatory reason (before/after kept), voids/restores (never deletes), resolves guard reports, bulk status, CSV of what is filtered; the guard's phone mirrors the decision.
+- **Hardening**: crash-safe capture drafts, duplicate warning (same plate within 30 min), sign-in throttle, optional origin allow-list, security headers.
+
 ### Decisions taken after review (these override the sections below)
 - **Ports / hosts:** frontend **3357**, backend **4357** → `parking.astrikos.xyz` / `parking-api.astrikos.xyz`.
 - **Android and iPhone:** same PWA. iPhone installs via Safari → Add to Home Screen. **Background Sync is not used** on either platform, so both behave the same: uploads run while the app is open or returns to the foreground (on reconnect, every 8 s probe, Sync now).

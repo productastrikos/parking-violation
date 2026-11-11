@@ -20,7 +20,10 @@ npm run build                    # uses .env.production → dist/ (includes sw.j
 pm2 start serve --name parking_3357 -- ./dist -s -p 3357
 
 # Backend — REST + Socket.IO on one port. Data in server/data/ (store.json + uploads/).
-PORT=4357 APP_PASSWORD=Astrikos2026 pm2 start server/index.js --name parking_be_4357
+PORT=4357 APP_PASSWORD=Astrikos2026 ALLOWED_ORIGINS=https://parking.astrikos.xyz:8443 \
+  pm2 start server/index.js --name parking_be_4357
+# Optional AI (plate double-check + written brief): add LLM_PROVIDER=groq LLM_API_KEY=… (see .env.example).
+# Without it the AI Advisory runs rules-based — everything still works.
 
 pm2 save
 ```

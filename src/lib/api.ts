@@ -44,6 +44,8 @@ export interface Gps {
   lat: number;
   lng: number;
   accuracy: number | null;
+  /** true when the position came from the labelled DEMO location, not a GPS receiver. */
+  demo?: boolean;
 }
 
 export interface Violation {
@@ -66,7 +68,104 @@ export interface Violation {
   clockSkewMs: number;
   status: Status;
   history: { at: number; by: string; action: string; note?: string }[];
+  edits?: { at: number; by: string; reason: string; changes: Record<string, { from: unknown; to: unknown }> }[];
+  voided?: boolean;
+  voidReason?: string;
+  voidedBy?: string;
+  voidedAt?: number;
+  correction?: { state: 'pending' | 'accepted' | 'dismissed'; reason: string; at: number; by: string; resolvedBy?: string; note?: string } | null;
+  ai?: {
+    plateCheck?: { ok: boolean; readable?: boolean; read?: { emirate: string | null; code: string; number: string }; agrees?: boolean; confidence?: number | null; note?: string | null; model?: string; label?: string; at: number };
+  };
+  updatedAt?: number;
   seeded?: boolean;
+}
+
+/* ── intelligence (shared/intel.js) ────────────────────────────────────── */
+export type AdvisoryPriority = 'critical' | 'high' | 'predictive' | 'medium' | 'info';
+export interface Advisory {
+  id: string;
+  kind: string;
+  priority: AdvisoryPriority;
+  title: string;
+  rootCause: string[];
+  evidence: string[];
+  actions: string[];
+  impact: string;
+  confidence: number;
+  ids: string[];
+  at: number;
+  cta?: { label: string; action: 'open-record' | 'open-filter' | 'open-plate' | 'open-area' | 'open-team'; id?: string; filter?: string; plate?: string; areaId?: string };
+}
+export interface Hotspot {
+  areaId: string;
+  label: string;
+  lat: number;
+  lng: number;
+  count7: number;
+  prev7: number;
+  trendPct: number;
+  score: number;
+  peakHour: number | null;
+  peakWindow: string;
+  topTypes: { id: string; label: string; n: number }[];
+  high7: number;
+}
+export interface AreaForecast {
+  areaId: string;
+  label: string;
+  next24: number;
+  next3: number;
+  peakHour: number;
+  samples: number;
+}
+export interface Forecast {
+  method: string;
+  trendFactor: number;
+  confidence: number;
+  next24: number;
+  hourly: { hour: number; expected: number }[];
+  areas: AreaForecast[];
+}
+export interface Offender {
+  key: string;
+  plate: Plate;
+  count: number;
+  last: number;
+  first?: number;
+  types: Record<string, number>;
+  areas?: Record<string, number>;
+  ids?: string[];
+  escalation: string;
+}
+export interface Anomaly {
+  kind: string;
+  tone: 'danger' | 'warning' | 'info';
+  ids: string[];
+  title: string;
+  detail: string;
+}
+export interface IntelPack {
+  engine: string;
+  at: number;
+  summary: string[];
+  advisories: Advisory[];
+  forecast: Forecast;
+  hotspots: Hotspot[];
+  offenders: Offender[];
+  anomalies: Anomaly[];
+  deployment: { need: (AreaForecast & { guards: number })[]; suggestions: { guardId: string; guardName: string; from: string; to: string; toAreaId: string; window: string; gain: number; reason: string }[] };
+  hourProfile: number[];
+  ai?: { ready: boolean; vision?: boolean; label?: string; model?: string; reason?: string };
+}
+export interface FieldPack {
+  engine: string;
+  at: number;
+  area: string;
+  outlook: (AreaForecast & { topTypes: { id: string; label: string; n: number }[]; trendPct: number; count7: number }) | null;
+  hotspots: { areaId: string; label: string; count7: number; trendPct: number; peakWindow: string; topTypes: { id: string; label: string; n: number }[] }[];
+  watchlist: Offender[];
+  mine: { id: string; status: Status; voided: boolean; voidReason?: string; correction: Violation['correction']; edited: boolean; plate: Plate; type: string }[];
 }
 
 export interface Device {
@@ -81,6 +180,7 @@ export interface Device {
   lastSync?: number;
   firstSeen?: number;
   pendingAtHello?: number;
+  position?: { lat: number; lng: number; accuracy: number | null; demo: boolean; at: number };
 }
 
 export interface Stats {
@@ -89,6 +189,8 @@ export interface Stats {
   todayOffline: number;
   offlineTotal: number;
   awaitingReview: number;
+  corrections: number;
+  voided: number;
   devicesOnline: number;
   devicesTotal: number;
   guardsActive: number;

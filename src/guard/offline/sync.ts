@@ -29,9 +29,12 @@
  */
 import { io, type Socket } from 'socket.io-client';
 import { API_URL, SOCKET_URL, APP_VERSION, type Violation } from '../../lib/api';
-import { allRecords, photosFor, markSynced, updateRecord, type LocalRecord } from './db';
+import { allRecords, photosFor, markSynced, updateRecord, getRecord, type LocalRecord } from './db';
 import { credentialFor, invalidateToken, getSession } from './offlineAuth';
 import { deviceInfo, deviceLabel, platformLabel } from './device';
+import { pendingOps, updateOp, applyServerState, kvGet, kvSet } from './db';
+import { currentPosition } from './location';
+import type { FieldPack } from '../../lib/api';
 
 export interface SyncStatus {
   online: boolean | null; // null = not checked yet
@@ -140,7 +143,11 @@ async function runOnce() {
   const queue = (await allRecords()).filter((r) => r.syncState === 'pending' || r.syncState === 'syncing').sort((a, b) => a.capturedAt - b.capturedAt);
   await refreshCounts();
   if (!(await probe())) return;
-  if (!queue.length) return;
+  if (!queue.length) {
+    await sendOps();
+    await refreshFieldPack();
+    return;
+  }
 
   set({ syncing: true, progress: { done: 0, total: queue.length }, lastError: null });
   let done = 0;
@@ -157,6 +164,77 @@ async function runOnce() {
   } finally {
     set({ syncing: false, progress: null, ...(uploaded ? { lastSyncAt: Date.now(), lastSyncCount: uploaded } : {}) });
     recordsChanged();
+  }
+  await sendOps();
+  await refreshFieldPack(true);
+}
+
+/* ── ops: mistake reports for records already on the server ─────────────── */
+async function sendOps() {
+  for (const op of await pendingOps()) {
+    const cred = await credentialFor(op.guardId);
+    if (!cred?.token) continue;
+    try {
+      const res = await fetch(`${API_URL}/api/violations/${op.violationId}/correction`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${cred.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: op.reason, opId: op.id }),
+      });
+      if (res.ok) {
+        await updateOp(op.id, { state: 'done' });
+        // The server has it now: no longer 'queued' on this phone.
+        const rec = await getRecord(op.violationId);
+        if (rec) await updateRecord(op.violationId, { correctionQueued: null, server: { ...(rec.server ?? { status: 'new', voided: false, edited: false, at: Date.now() }), correction: { state: 'pending', reason: op.reason }, at: Date.now() } });
+        recordsChanged();
+        void refreshFieldPack(true);
+      }
+      else if (res.status === 401) await invalidateToken(op.guardId);
+      else if (res.status < 500) await updateOp(op.id, { state: 'failed', lastError: ((await res.json().catch(() => ({}))) as { error?: string }).error });
+      else return;
+    } catch {
+      return; // offline again — retry on the next trigger
+    }
+  }
+}
+
+/* ── the field pack: area outlook, hotspots, plate watchlist (cached for offline) ── */
+const packListeners = new Set<() => void>();
+let pack: FieldPack | null = null;
+let packLoaded = false;
+let packFetchedAt = 0;
+
+export const getFieldPack = () => pack;
+export function subscribePack(l: () => void) {
+  packListeners.add(l);
+  if (!packLoaded) {
+    packLoaded = true;
+    void kvGet<FieldPack>('fieldPack').then((p) => {
+      if (p && !pack) {
+        pack = p;
+        packListeners.forEach((x) => x());
+      }
+    });
+  }
+  return () => packListeners.delete(l);
+}
+
+export async function refreshFieldPack(force = false) {
+  if (!force && Date.now() - packFetchedAt < 60_000) return;
+  const session = await getSession();
+  if (!session) return;
+  const cred = await credentialFor(session.user.id);
+  if (!cred?.token) return;
+  try {
+    const res = await fetch(`${API_URL}/api/intel/field`, { headers: { Authorization: `Bearer ${cred.token}` }, cache: 'no-store' });
+    if (!res.ok) return;
+    const p = (await res.json()) as FieldPack;
+    packFetchedAt = Date.now();
+    pack = p;
+    await kvSet('fieldPack', p);
+    packListeners.forEach((l) => l());
+    if (await applyServerState(p.mine)) recordsChanged();
+  } catch {
+    /* offline — keep the cached pack */
   }
 }
 
@@ -260,12 +338,28 @@ export async function connectSocket() {
   socket.on('connect', () => {
     set({ socket: true, online: true });
     void syncNow();
+    void sendPosition();
   });
   socket.on('disconnect', () => set({ socket: false }));
   socket.on('auth:invalid', () => void invalidateToken(session.user.id));
+  // The control room changed one of this guard's records (fine issued, corrected, voided): refresh now.
+  socket.on('mine:changed', () => void refreshFieldPack(true));
+
+  // Where the guard is, for the control room's live map (demo or real, labelled).
+  clearInterval(posTimer);
+  posTimer = window.setInterval(() => {
+    if (document.visibilityState === 'visible') void sendPosition();
+  }, 15_000);
+  async function sendPosition() {
+    if (!socket?.connected) return;
+    const p = await currentPosition(session!.user.id, session!.user.area);
+    if (p) socket.emit('device:position', { lat: p.lat, lng: p.lng, accuracy: p.accuracy, demo: p.demo });
+  }
 }
+let posTimer: number | undefined;
 
 export function disconnectSocket() {
+  clearInterval(posTimer);
   socket?.disconnect();
   socket = null;
   set({ socket: false });

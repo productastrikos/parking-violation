@@ -57,6 +57,14 @@
   --app-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.52);
   --app-edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --app-scrim: rgba(0, 0, 0, 0.6);
+  --app-advisory: #8279bc;
+  --app-advisory-soft: #9a91ce;
+  --app-advisory-strong: #6f66a8;
+  --app-advisory-panel: #6f66a8;
+  --app-advisory-border: rgba(130, 121, 188, 0.42);
+  --app-violet-bg: rgba(130, 121, 188, 0.12);
+  --app-on-color: #ffffff;
+  --app-sidebar-w: 248px;
   --app-plate-bg: #f7f7fa;
   --app-plate-text: #121212;
   --app-plate-border: #cbc6dd;
@@ -118,6 +126,12 @@
   --app-shadow-lg: 0 18px 48px rgba(53, 50, 72, 0.14);
   --app-edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   --app-scrim: rgba(53, 50, 72, 0.38);
+  --app-advisory: #5b4bc4;
+  --app-advisory-soft: #7466d2;
+  --app-advisory-strong: #4a3ba8;
+  --app-advisory-panel: #4a3ba8;
+  --app-advisory-border: rgba(91, 75, 196, 0.38);
+  --app-violet-bg: rgba(91, 75, 196, 0.09);
   --app-plate-bg: #ffffff;
   --app-plate-text: #121212;
   --app-plate-border: #cbc6dd;
@@ -376,6 +390,11 @@ textarea {
   background: var(--app-info-bg);
   border-color: var(--app-info-border);
   color: var(--app-info);
+}
+.chip-advisory {
+  background: var(--app-violet-bg);
+  border-color: var(--app-advisory-border);
+  color: var(--app-advisory-soft);
 }
 .chip-accent {
   background: var(--app-accent-bg);

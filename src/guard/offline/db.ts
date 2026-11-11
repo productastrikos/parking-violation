@@ -38,6 +38,32 @@ export interface LocalRecord {
   lastError?: string;
   syncedAt?: number;
   receivedAt?: number;
+  editedAt?: number;
+  /** What the control room did with it, mirrored from the server's field pack. */
+  server?: { status: string; voided: boolean; voidReason?: string; edited: boolean; correction?: { state: string; reason: string } | null; plate?: Plate; type?: string; at: number };
+  /** A mistake report waiting in the outbox (before the server has it). */
+  correctionQueued?: { reason: string; at: number } | null;
+}
+
+/** A change to a synced record, queued like a record so it works offline. */
+export interface Op {
+  id: string; // op id = idempotency key on the server
+  kind: 'correction';
+  violationId: string;
+  guardId: string;
+  reason: string;
+  createdAt: number;
+  state: 'pending' | 'done' | 'failed';
+  lastError?: string;
+}
+
+/** An unfinished capture form, so a killed app or a phone call never loses a half-filled record. */
+export interface Draft {
+  userId: string;
+  editingId?: string;
+  fields: Record<string, unknown>;
+  photos: { kind: 'vehicle' | 'plate'; buf: ArrayBuffer; type: string; at: number }[];
+  savedAt: number;
 }
 
 export interface StoredPhoto {
@@ -51,16 +77,74 @@ export interface StoredPhoto {
 let dbp: Promise<IDBPDatabase> | null = null;
 
 export function db() {
-  dbp ||= openDB('park-patrol', 1, {
-    upgrade(d) {
-      const r = d.createObjectStore('records', { keyPath: 'id' });
-      r.createIndex('byState', 'syncState');
-      r.createIndex('byCaptured', 'capturedAt');
-      d.createObjectStore('photos', { keyPath: 'key' });
-      d.createObjectStore('kv');
+  dbp ||= openDB('park-patrol', 2, {
+    upgrade(d, oldVersion) {
+      if (oldVersion < 1) {
+        const r = d.createObjectStore('records', { keyPath: 'id' });
+        r.createIndex('byState', 'syncState');
+        r.createIndex('byCaptured', 'capturedAt');
+        d.createObjectStore('photos', { keyPath: 'key' });
+        d.createObjectStore('kv');
+      }
+      if (oldVersion < 2) d.createObjectStore('ops', { keyPath: 'id' });
     },
   });
   return dbp;
+}
+
+/* ── ops (corrections to synced records) ───────────────────────────────── */
+export async function queueOp(op: Op) {
+  const d = await db();
+  const tx = d.transaction(['ops', 'records'], 'readwrite');
+  await tx.objectStore('ops').put(op);
+  const rec = (await tx.objectStore('records').get(op.violationId)) as LocalRecord | undefined;
+  if (rec) await tx.objectStore('records').put({ ...rec, correctionQueued: { reason: op.reason, at: op.createdAt } });
+  await tx.done;
+}
+export async function pendingOps(): Promise<Op[]> {
+  return ((await (await db()).getAll('ops')) as Op[]).filter((o) => o.state === 'pending').sort((a, b) => a.createdAt - b.createdAt);
+}
+export async function updateOp(id: string, patch: Partial<Op>) {
+  const d = await db();
+  const cur = (await d.get('ops', id)) as Op | undefined;
+  if (cur) await d.put('ops', { ...cur, ...patch });
+}
+
+/** Mirror the control room's decisions onto the phone's copies. */
+export async function applyServerState(mine: { id: string; status: string; voided: boolean; voidReason?: string; edited: boolean; correction?: { state: string; reason: string } | null; plate?: Plate; type?: string }[]) {
+  const d = await db();
+  const tx = d.transaction('records', 'readwrite');
+  let changed = false;
+  for (const m of mine) {
+    const rec = (await tx.store.get(m.id)) as LocalRecord | undefined;
+    if (!rec) continue;
+    const server = { status: m.status, voided: m.voided, voidReason: m.voidReason, edited: m.edited, correction: m.correction ?? null, plate: m.plate, type: m.type, at: Date.now() };
+    if (JSON.stringify({ ...rec.server, at: 0 }) === JSON.stringify({ ...server, at: 0 })) continue;
+    await tx.store.put({ ...rec, server, correctionQueued: m.correction ? null : rec.correctionQueued });
+    changed = true;
+  }
+  await tx.done;
+  return changed;
+}
+
+/* ── drafts ────────────────────────────────────────────────────────────── */
+export const getDraft = (userId: string) => kvGet<Draft>(`draft:${userId}`);
+export const saveDraft = (d: Draft) => kvSet(`draft:${d.userId}`, d);
+export const clearDraft = (userId: string) => kvDel(`draft:${userId}`);
+
+/** Replace an UNSYNCED record and its photos (guard edited it before upload). */
+export async function replaceUnsynced(rec: LocalRecord, photos: Omit<StoredPhoto, 'key' | 'recordId'>[]) {
+  const d = await db();
+  const tx = d.transaction(['records', 'photos'], 'readwrite');
+  const cur = (await tx.objectStore('records').get(rec.id)) as LocalRecord | undefined;
+  if (cur && (cur.syncState === 'synced' || cur.syncState === 'syncing')) {
+    await tx.done;
+    throw new Error('This record was uploaded meanwhile — report a mistake instead of editing it');
+  }
+  for (const k of ['vehicle', 'plate']) await tx.objectStore('photos').delete(`${rec.id}:${k}`);
+  await tx.objectStore('records').put(rec);
+  for (const p of photos) await tx.objectStore('photos').put({ ...p, recordId: rec.id, key: `${rec.id}:${p.kind}` });
+  await tx.done;
 }
 
 /* ── kv ─────────────────────────────────────────────────────────────────── */

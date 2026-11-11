@@ -12,6 +12,7 @@ import { KeyRound, Loader2, Power, Smartphone, UserPlus, X, AlertTriangle, Searc
 import { request, ApiError, AREAS, areaOf, ago, type TeamRow, type User } from '../lib/api';
 import { useNow } from '../lib/ui';
 import type { Live } from './useLive';
+import { MapView } from './parts';
 
 export default function TeamPage({ live, token, me }: { live: Live; token: string; me: User }) {
   const now = useNow(20_000);
@@ -76,6 +77,22 @@ export default function TeamPage({ live, token, me }: { live: Live; token: strin
           {msg}
         </div>
       )}
+
+      <section className="card" style={{ marginBottom: 16 }}>
+        <div className="card-head">
+          <div>
+            <h3>Live positions</h3>
+            <div className="faint" style={{ fontSize: 12 }}>
+              Sent by each guard's phone every 15 s while the app is open
+              {live.devices.some((d) => d.position?.demo) ? ' · positions marked DEMO come from the demo GPS inside the guard’s patrol area' : ''}
+            </div>
+          </div>
+          <span className="faint" style={{ fontSize: 12 }}>
+            {live.devices.filter((d) => d.position).length} on the map
+          </span>
+        </div>
+        <MapView devices={live.devices} height={300} />
+      </section>
 
       <section className="card">
         <div className="card-head">

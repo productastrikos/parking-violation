@@ -4,16 +4,16 @@ Synthetic UAE-style plates (made up for testing — not real vehicles, not offic
 on-phone plate reader. Show them full-screen on a laptop or monitor and photograph them with the phone,
 as the **plate close-up** in *Record a violation*.
 
-| File | Plate | What the app reads (tested 11 Nov 2026) |
+| File | Plate | Photo reader (tested 11 Nov 2026, evening build) |
 |---|---|---|
-| `01-abudhabi-13-48217.jpg` | AD 13 · 48217 | ✅ 13 · 48217 |
+| `01-abudhabi-13-48217.jpg` | AD 13 · 48217 | ✅ 13 · 48217 — and the **live scanner** locks on it in < 2 s |
 | `02-abudhabi-5-12345-red.jpg` | AD 5 · 12345 (code in a red box) | ✅ 5 · 12345 |
 | `03-dubai-A-27654.jpg` | Dubai A · 27654 | ✅ A · 27654 — pick **Dubai** in the emirate box |
-| `04-dubai-BB-3091.jpg` | Dubai BB · 3091 | ⚠️ BB · 3001 — one digit off; the guard corrects it |
+| `04-dubai-BB-3091.jpg` | Dubai BB · 3091 | ✅ number 3091 · code left blank for the guard |
 | `05-sharjah-2-55120.jpg` | Sharjah 2 · 55120 | ✅ 2 · 55120 — pick **Sharjah** |
-| `06-abudhabi-7-90316-tilted.jpg` | AD 7 · 90316, tilted 8° | ⚠️ number right, code read as "B" |
-| `07-dubai-K-6402-far.jpg` | Dubai K · 6402, small in frame | ❌ not read — "type it below" (shows why the close-up matters) |
-| `08-abudhabi-50-1188-tilted-hard.jpg` | AD 50 · 1188, tilted 18° | ⚠️ 50 · 118 — a digit missing |
+| `06-abudhabi-7-90316-tilted.jpg` | AD 7 · 90316, tilted 8° | ✅ number 90316 · code left blank |
+| `07-dubai-K-6402-far.jpg` | Dubai K · 6402, small in frame | ✅ number 6402 (the reader finds the plate in the photo) |
+| `08-abudhabi-50-1188-tilted-hard.jpg` | AD 50 · 1188, tilted 18° | ⚠️ low-confidence read — flagged for the guard to check |
 
 The emirate name is small on a plate and usually not picked up, so the emirate box stays on **Abu Dhabi**
 unless the guard changes it. Every reading is shown for the guard to check before saving.

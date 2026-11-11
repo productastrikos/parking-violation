@@ -3,22 +3,43 @@
  * current by the socket (the enrichment). If the socket cannot connect, the
  * dashboard polls every 15 s, so it is never "working but empty", and the
  * header says honestly whether it is live.
+ *
+ * Also owns every write the dashboard makes (status, edit, void, restore,
+ * correction, bulk) so pages never hand-roll requests, and the AI pack
+ * (/api/intel) — refreshed every minute and shortly after records change.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
-import { request, SOCKET_URL, type Device, type Stats, type TeamRow, type Violation } from '../lib/api';
+import { io } from 'socket.io-client';
+import { request, SOCKET_URL, type Device, type IntelPack, type Stats, type TeamRow, type Violation } from '../lib/api';
+
+export interface EditChanges {
+  type?: string;
+  severity?: string;
+  notes?: string;
+  plate?: { emirate?: string; code?: string; number?: string };
+  location?: { areaId?: string; landmark?: string };
+}
 
 export interface Live {
   violations: Violation[];
   stats: Stats | null;
   devices: Device[];
   team: TeamRow[];
+  intel: IntelPack | null;
   live: boolean;
   loaded: boolean;
   error: string | null;
-  fresh: Set<string>; // ids that arrived over the socket in the last few seconds
+  fresh: Set<string>;
+  token: string;
   reloadTeam: () => Promise<void>;
-  setStatus: (id: string, status: string) => Promise<void>;
+  refreshIntel: () => Promise<void>;
+  setStatus: (id: string, status: string, note?: string) => Promise<void>;
+  bulkStatus: (ids: string[], status: string) => Promise<number>;
+  edit: (id: string, changes: EditChanges, reason: string) => Promise<Violation>;
+  voidRecord: (id: string, reason: string) => Promise<void>;
+  restore: (id: string) => Promise<void>;
+  dismissCorrection: (id: string, note: string) => Promise<void>;
+  plateCheck: (id: string) => Promise<void>;
 }
 
 export function useLive(token: string, onAuthLost: () => void): Live {
@@ -26,16 +47,26 @@ export function useLive(token: string, onAuthLost: () => void): Live {
   const [stats, setStats] = useState<Stats | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [team, setTeam] = useState<TeamRow[]>([]);
+  const [intel, setIntel] = useState<IntelPack | null>(null);
   const [live, setLive] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
-  const sockRef = useRef<Socket | null>(null);
+  const intelTimer = useRef<number | undefined>(undefined);
+
+  const fail = useCallback(
+    (e: unknown) => {
+      const err = e as { status?: number; message: string };
+      if (err.status === 401) onAuthLost();
+      else setError(err.message);
+    },
+    [onAuthLost],
+  );
 
   const load = useCallback(async () => {
     try {
       const [v, s, d, t] = await Promise.all([
-        request<{ violations: Violation[] }>('/api/violations?limit=1000', { token }),
+        request<{ violations: Violation[] }>('/api/violations?limit=5000', { token }),
         request<Stats>('/api/stats', { token }),
         request<{ devices: Device[] }>('/api/devices', { token }),
         request<{ team: TeamRow[] }>('/api/team', { token }),
@@ -47,21 +78,34 @@ export function useLive(token: string, onAuthLost: () => void): Live {
       setLoaded(true);
       setError(null);
     } catch (e) {
-      const err = e as { status?: number; message: string };
-      if (err.status === 401) onAuthLost();
-      else setError(err.message);
+      fail(e);
     }
-  }, [token, onAuthLost]);
+  }, [token, fail]);
+
+  const refreshIntel = useCallback(async () => {
+    try {
+      setIntel(await request<IntelPack>('/api/intel', { token }));
+    } catch {
+      /* the advisory is enrichment — the dashboard works without it */
+    }
+  }, [token]);
+  const intelSoon = useCallback(() => {
+    clearTimeout(intelTimer.current);
+    intelTimer.current = window.setTimeout(() => void refreshIntel(), 2500);
+  }, [refreshIntel]);
 
   const reloadTeam = useCallback(async () => {
     const t = await request<{ team: TeamRow[] }>('/api/team', { token });
     setTeam(t.team);
   }, [token]);
 
+  const upsert = useCallback((v: Violation) => setViolations((list) => (list.some((x) => x.id === v.id) ? list.map((x) => (x.id === v.id ? v : x)) : [v, ...list])), []);
+
   useEffect(() => {
     void load();
+    void refreshIntel();
+    const it = window.setInterval(() => void refreshIntel(), 60_000);
     const s = io(SOCKET_URL, { auth: { token, surface: 'console' }, reconnectionDelayMax: 5000 });
-    sockRef.current = s;
     s.on('connect', () => {
       setLive(true);
       void load(); // catch up on anything that arrived while disconnected
@@ -77,26 +121,33 @@ export function useLive(token: string, onAuthLost: () => void): Live {
       void reloadTeam().catch(() => {});
     });
     s.on('violation:created', (p: { violation: Violation; stats: Stats }) => {
-      setViolations((list) => (list.some((x) => x.id === p.violation.id) ? list : [p.violation, ...list]));
+      upsert(p.violation);
       setStats(p.stats);
       setFresh((f) => new Set(f).add(p.violation.id));
-      setTimeout(() => setFresh((f) => {
-        const n = new Set(f);
-        n.delete(p.violation.id);
-        return n;
-      }), 8000);
+      setTimeout(
+        () =>
+          setFresh((f) => {
+            const n = new Set(f);
+            n.delete(p.violation.id);
+            return n;
+          }),
+        9000,
+      );
       void reloadTeam().catch(() => {});
+      intelSoon();
     });
-    s.on('violation:updated', (p: { violation: Violation; stats: Stats }) => {
-      setViolations((list) => list.map((x) => (x.id === p.violation.id ? p.violation : x)));
-      setStats(p.stats);
+    s.on('violation:updated', (p: { violation: Violation; stats?: Stats }) => {
+      upsert(p.violation);
+      if (p.stats) setStats(p.stats);
+      intelSoon();
     });
+    s.on('stats', (p: { stats: Stats }) => setStats(p.stats));
     s.on('team:changed', () => void reloadTeam().catch(() => {}));
     return () => {
+      clearInterval(it);
       s.disconnect();
-      sockRef.current = null;
     };
-  }, [token, load, reloadTeam, onAuthLost]);
+  }, [token, load, reloadTeam, refreshIntel, intelSoon, onAuthLost, upsert]);
 
   // Poll only while the socket is down.
   useEffect(() => {
@@ -105,13 +156,45 @@ export function useLive(token: string, onAuthLost: () => void): Live {
     return () => clearInterval(t);
   }, [live, load]);
 
-  const setStatus = useCallback(
-    async (id: string, status: string) => {
-      const r = await request<{ violation: Violation }>(`/api/violations/${id}/status`, { method: 'POST', token, body: JSON.stringify({ status }) });
-      setViolations((list) => list.map((x) => (x.id === id ? r.violation : x)));
+  const post = useCallback(
+    async (path: string, body: unknown = {}) => {
+      const r = await request<{ violation: Violation }>(path, { method: 'POST', token, body: JSON.stringify(body) });
+      upsert(r.violation);
+      intelSoon();
+      return r.violation;
     },
-    [token],
+    [token, upsert, intelSoon],
   );
 
-  return { violations, stats, devices, team, live, loaded, error, fresh, reloadTeam, setStatus };
+  return {
+    violations,
+    stats,
+    devices,
+    team,
+    intel,
+    live,
+    loaded,
+    error,
+    fresh,
+    token,
+    reloadTeam,
+    refreshIntel,
+    setStatus: async (id, status, note) => void (await post(`/api/violations/${id}/status`, { status, note })),
+    bulkStatus: async (ids, status) => {
+      const r = await request<{ updated: number }>('/api/violations/bulk-status', { method: 'POST', token, body: JSON.stringify({ ids, status }) });
+      await load();
+      intelSoon();
+      return r.updated;
+    },
+    edit: async (id, changes, reason) => {
+      const r = await request<{ violation: Violation }>(`/api/violations/${id}`, { method: 'PATCH', token, body: JSON.stringify({ changes, reason }) });
+      upsert(r.violation);
+      intelSoon();
+      return r.violation;
+    },
+    voidRecord: async (id, reason) => void (await post(`/api/violations/${id}/void`, { reason })),
+    restore: async (id) => void (await post(`/api/violations/${id}/restore`)),
+    dismissCorrection: async (id, note) => void (await post(`/api/violations/${id}/correction/dismiss`, { note })),
+    plateCheck: async (id) => void (await post(`/api/ai/plate-check/${id}`)),
+  };
 }

@@ -23,6 +23,10 @@ const DATA_DIR = path.resolve(import.meta.dirname, '..', 'data');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
 export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const SESSION_TTL = 30 * 86_400_000;
+/** Bump when the SAMPLE data changes shape; on boot, seeded records are rebuilt
+ *  (real records, users, sessions and devices are kept). v2: 14 days, area
+ *  rhythms, repeat offenders and a duplicate pair for the advisory engine. */
+const SEED_VERSION = 2;
 
 let state = null;
 let writeTimer = null;
@@ -53,6 +57,7 @@ function fresh() {
     devices: {},
     violations: buildSeedViolations(),
     audit: [],
+    seedVersion: SEED_VERSION,
   };
 }
 
@@ -62,6 +67,16 @@ function migrate(s) {
   s.devices ||= {};
   s.violations ||= [];
   s.audit ||= [];
+  if ((s.seedVersion ?? 1) < SEED_VERSION) {
+    const real = s.violations.filter((v) => !v.seeded);
+    s.violations = [...real, ...buildSeedViolations()].sort((a, b) => b.capturedAt - a.capturedAt);
+    s.seedVersion = SEED_VERSION;
+    console.log(`[store] sample data rebuilt (v${SEED_VERSION}); ${real.length} real records kept`);
+  }
+  for (const v of s.violations) {
+    v.edits ??= [];
+    v.voided ??= false;
+  }
   // Adopt a seeded account the persisted store predates (never overwrite an edited one).
   for (const seeded of SEED_USERS) {
     if (!s.users.some((u) => u.id === seeded.id)) {
@@ -217,6 +232,121 @@ export function setStatus(id, status, note, actor) {
   return v;
 }
 
+/* ── corrections: edit, void, restore, guard-reported mistakes ────────────
+   A record is evidence, so nothing is ever deleted. An edit keeps the before
+   and after of every field it changes plus the reason; a void hides the
+   record from KPIs and fines but keeps it (and why) for the audit. */
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+export function editViolation(id, input, reason, actor, { typeIds, areaIds, emirateIds }) {
+  const v = findViolation(id);
+  if (!v) throw httpError(404, 'No such violation');
+  const why = String(reason || '').trim();
+  if (why.length < 3) throw httpError(400, 'Give a reason for the change (at least 3 characters)');
+  if (v.voided) throw httpError(409, 'Restore the record before editing it');
+  const changes = {};
+  const set = (key, from, to, apply) => {
+    if (!same(from, to)) {
+      changes[key] = { from: from ?? null, to: to ?? null };
+      apply();
+    }
+  };
+  if (input.type !== undefined) {
+    if (!typeIds.includes(input.type)) throw httpError(400, 'Unknown violation type');
+    set('type', v.type, input.type, () => (v.type = input.type));
+  }
+  if (input.severity !== undefined) {
+    if (!['low', 'medium', 'high'].includes(input.severity)) throw httpError(400, 'Unknown severity');
+    set('severity', v.severity, input.severity, () => (v.severity = input.severity));
+  }
+  if (input.notes !== undefined) {
+    const n = String(input.notes).trim().slice(0, 600);
+    set('notes', v.notes, n, () => (v.notes = n));
+  }
+  if (input.plate) {
+    const next = {
+      emirate: emirateIds.includes(input.plate.emirate) ? input.plate.emirate : v.plate.emirate,
+      code: String(input.plate.code ?? v.plate.code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3),
+      number: String(input.plate.number ?? v.plate.number ?? '').replace(/\D/g, '').slice(0, 5),
+    };
+    if (!next.number) throw httpError(400, 'The plate number cannot be empty');
+    let changed = false;
+    for (const k of ['emirate', 'code', 'number']) set(`plate.${k}`, v.plate[k], next[k], () => (changed = true));
+    if (changed) v.plate = { ...v.plate, ...next, source: 'manual', correctedBy: actor.name };
+  }
+  if (input.location) {
+    if (input.location.areaId && !areaIds.includes(input.location.areaId)) throw httpError(400, 'Unknown area');
+    for (const k of ['areaId', 'landmark']) {
+      if (input.location[k] === undefined) continue;
+      const next = String(input.location[k]).trim().slice(0, 120);
+      set(`location.${k}`, v.location[k], next, () => (v.location[k] = next));
+    }
+  }
+  if (!Object.keys(changes).length) throw httpError(400, 'Nothing changed');
+  const at = Date.now();
+  v.edits.push({ at, by: actor.name, byId: actor.id, reason: why, changes });
+  v.history.push({ at, by: actor.name, action: `Edited ${Object.keys(changes).join(', ')}`, note: why });
+  v.updatedAt = at;
+  audit('violation.edit', actor, { id: v.id, changes, reason: why });
+  return v;
+}
+
+export function voidViolation(id, reason, actor) {
+  const v = findViolation(id);
+  if (!v) throw httpError(404, 'No such violation');
+  const why = String(reason || '').trim();
+  if (why.length < 3) throw httpError(400, 'Give a reason for voiding (at least 3 characters)');
+  if (v.voided) return v;
+  v.voided = true;
+  v.voidedAt = Date.now();
+  v.voidedBy = actor.name;
+  v.voidReason = why.slice(0, 300);
+  if (v.correction?.state === 'pending') v.correction = { ...v.correction, state: 'accepted', resolvedBy: actor.name, resolvedAt: v.voidedAt };
+  v.history.push({ at: v.voidedAt, by: actor.name, action: 'Voided', note: v.voidReason });
+  audit('violation.void', actor, { id: v.id, reason: v.voidReason });
+  return v;
+}
+
+export function restoreViolation(id, actor) {
+  const v = findViolation(id);
+  if (!v) throw httpError(404, 'No such violation');
+  if (!v.voided) return v;
+  v.voided = false;
+  v.history.push({ at: Date.now(), by: actor.name, action: 'Restored', note: `was voided: ${v.voidReason ?? ''}` });
+  audit('violation.restore', actor, { id: v.id });
+  return v;
+}
+
+/** A guard reports their OWN synced record as a mistake. Idempotent by opId — it may be retried from the phone's outbox. */
+export function requestCorrection(id, { reason, opId }, actor) {
+  const v = findViolation(id);
+  if (!v || v.guardId !== actor.id) throw httpError(404, 'Not found');
+  if (opId && v.correction?.opId === opId) return v;
+  const why = String(reason || '').trim();
+  if (why.length < 3) throw httpError(400, 'Say what is wrong with the record');
+  v.correction = { state: 'pending', reason: why.slice(0, 300), opId, at: Date.now(), by: actor.name };
+  v.history.push({ at: Date.now(), by: actor.name, action: 'Guard reported a mistake', note: v.correction.reason });
+  audit('violation.correction', actor, { id: v.id, reason: v.correction.reason });
+  return v;
+}
+
+export function dismissCorrection(id, note, actor) {
+  const v = findViolation(id);
+  if (!v?.correction) throw httpError(404, 'No correction request on this record');
+  v.correction = { ...v.correction, state: 'dismissed', resolvedBy: actor.name, resolvedAt: Date.now(), note: String(note || '').slice(0, 300) };
+  v.history.push({ at: Date.now(), by: actor.name, action: 'Correction request dismissed — record kept', note: note || undefined });
+  audit('violation.correction.dismiss', actor, { id: v.id });
+  return v;
+}
+
+export function setAi(id, ai) {
+  const v = findViolation(id);
+  if (!v) return null;
+  v.ai = { ...(v.ai ?? {}), ...ai };
+  persist();
+  return v;
+}
+
 /** Start of "today" in the server's local time zone. */
 const startOfDay = (t = Date.now()) => {
   const d = new Date(t);
@@ -226,7 +356,7 @@ const startOfDay = (t = Date.now()) => {
 
 export function stats() {
   const today = startOfDay();
-  const vs = state.violations;
+  const vs = state.violations.filter((v) => !v.voided);
   const todays = vs.filter((v) => v.capturedAt >= today);
   const byType = {};
   for (const v of todays) byType[v.type] = (byType[v.type] ?? 0) + 1;
@@ -243,6 +373,8 @@ export function stats() {
     todayOffline: todays.filter((v) => v.capturedOffline).length,
     offlineTotal: vs.filter((v) => v.capturedOffline).length,
     awaitingReview: vs.filter((v) => v.status === 'new').length,
+    corrections: vs.filter((v) => v.correction?.state === 'pending').length,
+    voided: state.violations.length - vs.length,
     devicesOnline: ds.filter((d) => d.online).length,
     devicesTotal: ds.length,
     guardsActive: state.users.filter((u) => u.role === 'guard' && u.active !== false).length,
@@ -256,7 +388,7 @@ export function teamRows() {
   const today = startOfDay();
   const ds = devices();
   return state.users.map((u) => {
-    const mine = state.violations.filter((v) => v.guardId === u.id);
+    const mine = state.violations.filter((v) => v.guardId === u.id && !v.voided);
     const myDevices = ds.filter((d) => d.userId === u.id);
     const lastRecord = mine.reduce((m, v) => Math.max(m, v.capturedAt), 0) || null;
     return {
