@@ -1,0 +1,538 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Astrikos UI theme v2 (26 Oct 2026) — tokens copied verbatim (§2.2/§2.3),
+   then the few component recipes this POC needs. Components consume
+   var(--app-*) only; no hex values below the token blocks.
+   Fonts are self-hosted (@fontsource) so the guard app renders offline.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root,
+[data-theme='dark'] {
+  --app-panel: #1a1a1a;
+  --app-bg: #121212;
+  --app-chrome-bg: #171717;
+  --app-bg-elevated: #212121;
+  --app-surface: #1e1e1e;
+  --app-surface-soft: #161616;
+  --app-surface-raised: #272727;
+  --app-border: #2b2b2b;
+  --app-border-soft: #232323;
+  --app-border-strong: #3a3a3a;
+  --app-panel-border: #282828;
+  --app-text: #ececec;
+  --app-text-muted: #a6a6a6;
+  --app-text-faint: #787878;
+  --app-accent: #a79eda;
+  --app-accent-strong: #bdb5e8;
+  --app-accent-soft: #c9c3e6;
+  --app-accent-deep: #8b82c3;
+  --app-accent-bg: rgba(167, 158, 218, 0.1);
+  --app-accent-border: rgba(167, 158, 218, 0.26);
+  --app-glow: rgba(167, 158, 218, 0.2);
+  --app-btn: #8b82c3;
+  --app-btn-hover: #9c93d0;
+  --app-btn-text: #ffffff;
+  --app-btn-shadow: rgba(139, 130, 195, 0.26);
+  --app-on-accent: #ffffff;
+  --app-success: #22b15c;
+  --app-success-strong: #1b9a4e;
+  --app-success-bg: rgba(34, 177, 92, 0.13);
+  --app-success-border: rgba(34, 177, 92, 0.3);
+  --app-warning: #d99b3c;
+  --app-warning-soft: #e5b060;
+  --app-warning-bg: rgba(217, 155, 60, 0.13);
+  --app-warning-border: rgba(217, 155, 60, 0.3);
+  --app-danger: #dc4a4a;
+  --app-danger-soft: #e86d6d;
+  --app-danger-bg: rgba(220, 74, 74, 0.13);
+  --app-danger-border: rgba(220, 74, 74, 0.3);
+  --app-info: #5e9bd1;
+  --app-info-bg: rgba(94, 155, 209, 0.13);
+  --app-info-border: rgba(94, 155, 209, 0.3);
+  --app-teal: #3fb3a6;
+  --app-teal-bg: rgba(63, 179, 166, 0.12);
+  --app-chart-grid: rgba(255, 255, 255, 0.055);
+  --app-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --app-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.42);
+  --app-shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --app-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.52);
+  --app-edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --app-scrim: rgba(0, 0, 0, 0.6);
+  --app-plate-bg: #f7f7fa;
+  --app-plate-text: #121212;
+  --app-plate-border: #cbc6dd;
+  --app-header-h: 64px;
+  --astk-metal-1: #ffffff;
+  --astk-metal-3: #8f8aa8;
+  --astk-metal-5: #a9a3c0;
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --app-panel: #ffffff;
+  --app-bg: #f4f3f9;
+  --app-chrome-bg: #ffffff;
+  --app-bg-elevated: #ffffff;
+  --app-surface: #ffffff;
+  --app-surface-soft: #f7f7fa;
+  --app-surface-raised: #e8e6f2;
+  --app-border: #e2dfef;
+  --app-border-soft: #edebf5;
+  --app-border-strong: #cbc6dd;
+  --app-panel-border: #e6e3f1;
+  --app-text: #353248;
+  --app-text-muted: #565559;
+  --app-text-faint: #7d7a91;
+  --app-accent: #5b4bc4;
+  --app-accent-strong: #4a3ba8;
+  --app-accent-soft: #8b82c3;
+  --app-accent-deep: #353248;
+  --app-accent-bg: rgba(91, 75, 196, 0.075);
+  --app-accent-border: rgba(91, 75, 196, 0.22);
+  --app-glow: rgba(91, 75, 196, 0.15);
+  --app-btn: #353248;
+  --app-btn-hover: #474264;
+  --app-btn-text: #ffffff;
+  --app-btn-shadow: rgba(53, 50, 72, 0.22);
+  --app-on-accent: #ffffff;
+  --app-success: #0a8f42;
+  --app-success-strong: #077535;
+  --app-success-bg: rgba(10, 143, 66, 0.09);
+  --app-success-border: rgba(10, 143, 66, 0.26);
+  --app-warning: #9a6512;
+  --app-warning-soft: #b8791a;
+  --app-warning-bg: rgba(154, 101, 18, 0.09);
+  --app-warning-border: rgba(154, 101, 18, 0.26);
+  --app-danger: #be2e2e;
+  --app-danger-soft: #d14545;
+  --app-danger-bg: rgba(190, 46, 46, 0.08);
+  --app-danger-border: rgba(190, 46, 46, 0.24);
+  --app-info: #2f6fbf;
+  --app-info-bg: rgba(47, 111, 191, 0.08);
+  --app-info-border: rgba(47, 111, 191, 0.24);
+  --app-teal: #1f7f74;
+  --app-teal-bg: rgba(31, 127, 116, 0.09);
+  --app-chart-grid: rgba(53, 50, 72, 0.09);
+  --app-shadow-xs: 0 1px 2px rgba(53, 50, 72, 0.06);
+  --app-shadow-sm: 0 2px 8px rgba(53, 50, 72, 0.07);
+  --app-shadow-md: 0 6px 20px rgba(53, 50, 72, 0.09);
+  --app-shadow-lg: 0 18px 48px rgba(53, 50, 72, 0.14);
+  --app-edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --app-scrim: rgba(53, 50, 72, 0.38);
+  --app-plate-bg: #ffffff;
+  --app-plate-text: #121212;
+  --app-plate-border: #cbc6dd;
+  color-scheme: light;
+}
+
+/* ── base ─────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+body {
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: 'Lato', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+h1,
+h2,
+h3,
+h4,
+.display,
+.eyebrow,
+.kpi-value {
+  font-family: 'Lexend Deca', system-ui, sans-serif;
+}
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-text-faint);
+}
+.muted {
+  color: var(--app-text-muted);
+}
+.faint {
+  color: var(--app-text-faint);
+}
+:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ── panels ───────────────────────────────────────────────────────────── */
+.card {
+  background: var(--app-panel);
+  border: 1px solid var(--app-panel-border);
+  border-radius: 14px;
+  box-shadow: var(--app-edge-light), var(--app-shadow-sm);
+}
+.card-pad {
+  padding: 16px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--app-border-soft);
+}
+.card-head h3 {
+  font-size: 14px;
+}
+
+/* ── buttons ──────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 9px;
+  border: 1px solid var(--app-border-strong);
+  background: var(--app-surface-raised);
+  color: var(--app-text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 120ms;
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--app-bg-elevated);
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--app-btn);
+  border-color: transparent;
+  color: var(--app-btn-text);
+  box-shadow: 0 4px 14px var(--app-btn-shadow);
+}
+.btn-primary:hover {
+  background: var(--app-btn-hover);
+}
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.btn-ghost:hover {
+  background: var(--app-accent-bg);
+}
+.btn-danger {
+  background: var(--app-danger-bg);
+  border-color: var(--app-danger-border);
+  color: var(--app-danger);
+}
+.btn-sm {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.btn-lg {
+  min-height: 52px;
+  font-size: 16px;
+  border-radius: 12px;
+}
+.btn-block {
+  width: 100%;
+}
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--app-text-muted);
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: var(--app-accent-bg);
+  color: var(--app-text);
+}
+
+/* ── form ─────────────────────────────────────────────────────────────── */
+.field {
+  display: grid;
+  gap: 6px;
+}
+.field > label,
+.label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--app-text-muted);
+}
+.input,
+.select,
+.textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--app-border-strong);
+  background: var(--app-surface-soft);
+  color: var(--app-text);
+  font-size: 16px; /* 16px stops iOS Safari zooming into the field */
+}
+.textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 3px var(--app-glow);
+}
+.form-error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--app-danger-bg);
+  border: 1px solid var(--app-danger-border);
+  color: var(--app-danger);
+  font-size: 13px;
+}
+
+/* ── chips & status ───────────────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-raised);
+  color: var(--app-text-muted);
+}
+.chip-success {
+  background: var(--app-success-bg);
+  border-color: var(--app-success-border);
+  color: var(--app-success);
+}
+.chip-warning {
+  background: var(--app-warning-bg);
+  border-color: var(--app-warning-border);
+  color: var(--app-warning);
+}
+.chip-danger {
+  background: var(--app-danger-bg);
+  border-color: var(--app-danger-border);
+  color: var(--app-danger);
+}
+.chip-info {
+  background: var(--app-info-bg);
+  border-color: var(--app-info-border);
+  color: var(--app-info);
+}
+.chip-accent {
+  background: var(--app-accent-bg);
+  border-color: var(--app-accent-border);
+  color: var(--app-accent);
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--app-text-faint);
+  flex: none;
+}
+.dot-on {
+  background: var(--app-success);
+  box-shadow: 0 0 0 3px var(--app-success-bg);
+}
+.dot-off {
+  background: var(--app-text-faint);
+}
+.dot-warn {
+  background: var(--app-warning);
+  box-shadow: 0 0 0 3px var(--app-warning-bg);
+}
+.pulse {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A UAE-style plate: white, black type, code | number. */
+.plate {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 6px;
+  border: 1px solid var(--app-plate-border);
+  background: var(--app-plate-bg);
+  color: var(--app-plate-text);
+  font-family: 'Lexend Deca', system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.plate span {
+  padding: 5px 8px;
+}
+.plate .plate-em {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  display: grid;
+  place-items: center;
+  border-right: 1px solid var(--app-plate-border);
+}
+.plate .plate-code {
+  border-right: 1px solid var(--app-plate-border);
+}
+.plate-lg {
+  font-size: 22px;
+}
+.plate-lg span {
+  padding: 8px 12px;
+}
+.plate-lg .plate-em {
+  font-size: 12px;
+}
+
+/* ── brand mark ───────────────────────────────────────────────────────── */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand img {
+  height: 28px;
+  width: auto;
+}
+.brand-name {
+  font-family: 'Lexend Deca', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.brand-sub {
+  font-size: 11px;
+  color: var(--app-text-faint);
+}
+
+/* ── toast ────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--app-bg-elevated);
+  border: 1px solid var(--app-border-strong);
+  box-shadow: var(--app-shadow-lg);
+  font-weight: 700;
+  animation: rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+}
+
+/* ── sign-in (both surfaces) ──────────────────────────────────────────── */
+.signin {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  background: radial-gradient(1200px 600px at 20% -10%, var(--app-accent-bg), transparent 60%), var(--app-bg);
+}
+.signin-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 28px 24px;
+  display: grid;
+  gap: 18px;
+}
+.signin-card .brand img {
+  height: 34px;
+}
+.signin-title {
+  font-size: 22px;
+}
+.signin-hint {
+  font-size: 12px;
+  color: var(--app-text-faint);
+}
+.pw-wrap {
+  position: relative;
+}
+.pw-wrap .icon-btn {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+}

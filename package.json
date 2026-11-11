@@ -1,0 +1,55 @@
+{
+  "name": "parking-violation-poc",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Parking & traffic violation capture — offline-first guard app (PWA, Android + iPhone) + live dashboard + real-time backend (Astrikos POC).",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm:api\" \"vite\"",
+    "dev:http": "concurrently -n api,web -c magenta,cyan \"npm:api\" \"vite --mode http\"",
+    "dev:web": "vite",
+    "api": "node --env-file-if-exists=.env server/index.js",
+    "predev": "node scripts/preflight.mjs",
+    "preflight": "node scripts/preflight.mjs",
+    "phone": "node scripts/phone.mjs",
+    "postinstall": "node scripts/copy-ocr-assets.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "concurrently -n api,web -c magenta,cyan \"npm:api\" \"vite preview\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "reset": "node -e \"require('fs').rmSync('server/data',{recursive:true,force:true});console.log('data removed - the next boot reseeds')\"",
+    "build:lan": "vite build --mode lan",
+    "start:lan": "npm run build:lan && concurrently -n api,web -c magenta,cyan \"npm:api\" \"vite preview --mode http\""
+  },
+  "dependencies": {
+    "@fontsource/lato": "^5.1.0",
+    "@fontsource/lexend-deca": "^5.1.0",
+    "compression": "^1.7.5",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "idb": "^8.0.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.344.0",
+    "multer": "^2.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.12",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.1.0",
+    "qrcode": "^1.5.4",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.2",
+    "vite-plugin-pwa": "^0.21.1"
+  }
+}

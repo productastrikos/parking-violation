@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover lets the guard app paint under the iPhone notch / home bar;
+         the shell pads itself with env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#121212" />
+    <meta name="description" content="Astrikos Park Patrol — parking and traffic violation capture that works offline." />
+    <link rel="icon" type="image/png" href="/icons/favicon-64.png" />
+    <!-- iPhone: Safari ignores the manifest icons and needs these to install to the Home Screen
+         as a full-screen app with the right name and icon. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Park Patrol" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>Astrikos Park Patrol</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

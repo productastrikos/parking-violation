@@ -1,0 +1,544 @@
+/* Dashboard (desktop-first, still usable on a tablet). Tokens only. */
+
+.c-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.c-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: var(--app-header-h);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 20px;
+  background: var(--app-chrome-bg);
+  border-bottom: 1px solid var(--app-border);
+}
+.c-tabs {
+  display: flex;
+  gap: 4px;
+  height: 100%;
+}
+.c-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--app-text-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+.c-tabs button:hover {
+  color: var(--app-text);
+}
+.c-tabs button.is-active {
+  color: var(--app-accent);
+  border-bottom-color: var(--app-accent);
+}
+.c-header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.c-user {
+  text-align: right;
+  line-height: 1.2;
+  padding-left: 8px;
+  border-left: 1px solid var(--app-border);
+}
+.c-user-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+.c-user-role {
+  font-size: 11px;
+  color: var(--app-text-faint);
+  text-transform: capitalize;
+}
+.c-alert {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 20px 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--app-danger-bg);
+  color: var(--app-danger);
+  font-weight: 700;
+}
+.c-main {
+  flex: 1;
+  padding: 20px;
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+}
+.c-loading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  padding: 80px;
+  color: var(--app-text-faint);
+}
+
+/* ── KPIs ── */
+.c-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.c-kpi {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 160ms, transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.c-kpi::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--app-accent);
+}
+.c-kpi-warning::before {
+  background: var(--app-warning);
+}
+.c-kpi-info::before {
+  background: var(--app-info);
+}
+.c-kpi-success::before {
+  background: var(--app-success);
+}
+.c-kpi:hover {
+  transform: translateY(-1px);
+}
+.c-kpi.is-active {
+  border-color: var(--app-accent-border);
+  box-shadow: 0 0 0 1px var(--app-accent-border), var(--app-shadow-sm);
+}
+.c-kpi-static {
+  cursor: default;
+}
+.c-kpi-static:hover {
+  transform: none;
+}
+.c-kpi .kpi-value {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+/* ── layout ── */
+.c-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.c-side {
+  display: grid;
+  gap: 16px;
+}
+.c-feed {
+  min-width: 0;
+}
+.c-select {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 13px;
+  width: auto;
+}
+
+/* ── tables ── */
+.c-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 290px);
+}
+.c-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.c-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--app-panel);
+  text-align: left;
+  font-family: 'Lexend Deca', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-text-faint);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--app-border);
+  white-space: nowrap;
+}
+.c-table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--app-border-soft);
+  vertical-align: middle;
+}
+.c-table tbody tr {
+  cursor: pointer;
+  transition: background 160ms;
+}
+.c-team tbody tr {
+  cursor: default;
+}
+.c-table tbody tr:hover {
+  background: var(--app-accent-bg);
+}
+.c-table tr.is-open {
+  background: var(--app-accent-bg);
+}
+.c-table tr.is-fresh {
+  animation: fresh 8s ease-out;
+}
+@keyframes fresh {
+  0%,
+  40% {
+    background: var(--app-glow);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.c-table tr.is-inactive td {
+  opacity: 0.55;
+}
+.c-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.c-ellipsis {
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.c-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--app-text-faint);
+}
+.c-type {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.c-type-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 8px;
+}
+.c-just {
+  display: flex;
+  width: fit-content;
+  margin-top: 4px;
+}
+.c-sample {
+  margin-left: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--app-text-faint);
+}
+.c-row-actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+/* ── map & devices ── */
+.c-map {
+  height: 340px;
+  border-radius: 0 0 14px 14px;
+  background: var(--app-surface-soft);
+}
+[data-theme='dark'] .c-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.4);
+}
+.c-map .leaflet-container {
+  font: inherit;
+}
+.c-pin-fresh {
+  animation: pulse 1.2s ease-in-out 6;
+}
+.c-devices {
+  max-height: 300px;
+  overflow: auto;
+}
+.c-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--app-border-soft);
+}
+.c-device:last-child {
+  border-bottom: 0;
+}
+
+/* ── drawer ── */
+.c-drawer-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--app-scrim);
+  display: flex;
+  justify-content: flex-end;
+}
+.c-drawer {
+  width: min(520px, 100vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--app-panel);
+  border-left: 1px solid var(--app-border);
+  box-shadow: var(--app-shadow-lg);
+  animation: drawer-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+.c-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--app-border);
+}
+.c-drawer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 18px 20px;
+  display: grid;
+  gap: 20px;
+  align-content: start;
+}
+.c-drawer-foot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid var(--app-border);
+}
+.c-plate-block {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.c-photos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.c-photos figure {
+  margin: 0;
+  cursor: zoom-in;
+}
+.c-photos img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+  background: var(--app-surface-raised);
+}
+.c-photos figcaption {
+  font-size: 12px;
+  color: var(--app-text-faint);
+  margin-top: 4px;
+}
+.c-nophoto {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  border-radius: 10px;
+  border: 1px dashed var(--app-border-strong);
+  color: var(--app-text-faint);
+}
+.c-dl {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px 14px;
+  margin: 0;
+}
+.c-dl dt {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  align-self: start;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--app-text-faint);
+  padding-top: 2px;
+}
+.c-dl dd {
+  margin: 0;
+}
+.c-dl a {
+  color: var(--app-accent);
+}
+.c-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  position: relative;
+}
+.c-timeline li {
+  display: flex;
+  gap: 12px;
+  position: relative;
+}
+.c-timeline li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 26px;
+  bottom: -12px;
+  width: 1px;
+  background: var(--app-border-strong);
+}
+.c-tl-dot {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--app-surface-raised);
+  color: var(--app-text-muted);
+}
+.c-tl-warn {
+  background: var(--app-warning-bg);
+  color: var(--app-warning);
+}
+.c-tl-ok {
+  background: var(--app-success-bg);
+  color: var(--app-success);
+}
+.c-tl-accent {
+  background: var(--app-accent-bg);
+  color: var(--app-accent);
+}
+.c-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.88);
+  display: grid;
+  place-items: center;
+  cursor: zoom-out;
+}
+.c-zoom img {
+  max-width: 94vw;
+  max-height: 94vh;
+  border-radius: 8px;
+}
+
+/* ── team page ── */
+.c-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border: 1px solid var(--app-border-strong);
+  background: var(--app-surface-soft);
+  color: var(--app-text-faint);
+}
+.c-search input {
+  border: 0;
+  outline: 0;
+  background: none;
+  width: 180px;
+  font-size: 13px;
+}
+.c-flash {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 9px;
+  background: var(--app-success-bg);
+  border: 1px solid var(--app-success-border);
+  color: var(--app-success);
+  font-weight: 700;
+  cursor: pointer;
+}
+.c-modal-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--app-scrim);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.c-modal {
+  width: min(520px, 100%);
+  box-shadow: var(--app-shadow-lg);
+}
+.c-form {
+  display: grid;
+  gap: 14px;
+}
+.c-form-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 1100px) {
+  .c-grid {
+    grid-template-columns: 1fr;
+  }
+  .c-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .c-header {
+    gap: 10px;
+    padding: 0 12px;
+  }
+  .c-header .brand-sub,
+  .c-user {
+    display: none;
+  }
+  .c-tabs button {
+    padding: 0 8px;
+  }
+  .c-main {
+    padding: 12px;
+  }
+}

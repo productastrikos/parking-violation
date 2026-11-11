@@ -1,0 +1,561 @@
+/* Guard app — phone-first. Pads for the iPhone notch and home indicator with
+   env(safe-area-inset-*) (the page uses viewport-fit=cover). Large targets
+   (≥ 44 px) for use standing up, in the sun, with one hand. */
+
+.g-boot {
+  min-height: 100vh;
+  background: var(--app-bg);
+}
+
+.g-shell,
+.g-capture {
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--app-bg);
+}
+
+.g-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  background: var(--app-chrome-bg);
+  border-bottom: 1px solid var(--app-border);
+}
+.g-header .brand img {
+  height: 26px;
+}
+
+.g-main {
+  flex: 1;
+  padding: 16px 16px calc(110px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── status card ── */
+.g-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+}
+.g-status-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--app-surface-raised);
+  color: var(--app-text-muted);
+}
+.g-status.is-online .g-status-icon {
+  background: var(--app-success-bg);
+  color: var(--app-success);
+}
+.g-status.is-offline .g-status-icon {
+  background: var(--app-warning-bg);
+  color: var(--app-warning);
+}
+.g-status-title {
+  font-family: 'Lexend Deca', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+}
+.g-status-sub {
+  font-size: 13px;
+  color: var(--app-text-muted);
+  margin-top: 2px;
+}
+
+.g-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  border: 1px solid;
+}
+.g-banner svg {
+  flex: none;
+  margin-top: 1px;
+}
+.g-shell > .g-banner {
+  margin: 12px 16px 0;
+  width: auto;
+  cursor: pointer;
+}
+.g-banner-warn {
+  background: var(--app-warning-bg);
+  border-color: var(--app-warning-border);
+  color: var(--app-warning);
+}
+.g-banner-info {
+  background: var(--app-info-bg);
+  border-color: var(--app-info-border);
+  color: var(--app-info);
+}
+
+.g-install {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 8px 12px 14px;
+  border-color: var(--app-accent-border);
+  background: var(--app-accent-bg);
+}
+
+.g-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.g-tile {
+  padding: 14px;
+}
+.g-tile .kpi-value {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.g-tile-label {
+  font-size: 12px;
+  color: var(--app-text-muted);
+  margin-top: 4px;
+}
+.g-record {
+  min-height: 60px;
+  font-size: 17px;
+}
+
+.g-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 2px 8px;
+}
+.g-section-head h3 {
+  font-size: 15px;
+}
+
+.g-empty {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 28px 16px;
+  color: var(--app-text-faint);
+  text-align: center;
+}
+
+/* ── record list ── */
+.g-list {
+  overflow: hidden;
+}
+.g-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--app-border-soft);
+  text-align: left;
+  cursor: pointer;
+}
+.g-row:last-child {
+  border-bottom: 0;
+}
+.g-row:active {
+  background: var(--app-accent-bg);
+}
+.g-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 9px;
+  overflow: hidden;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--app-surface-raised);
+  color: var(--app-text-muted);
+}
+.g-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.g-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.g-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.g-row-type {
+  font-weight: 700;
+  font-size: 13px;
+}
+.g-row-sub {
+  font-size: 12px;
+  color: var(--app-text-faint);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── bottom nav ── */
+.g-nav {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  z-index: 30;
+  width: 100%;
+  max-width: 560px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  align-items: end;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  background: var(--app-chrome-bg);
+  border-top: 1px solid var(--app-border);
+}
+.g-nav-btn {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--app-text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.g-nav-btn.is-active {
+  color: var(--app-accent);
+}
+.g-nav-icon {
+  position: relative;
+}
+.g-badge {
+  position: absolute;
+  top: -6px;
+  right: -12px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--app-warning);
+  color: var(--app-on-accent);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.g-fab {
+  justify-self: center;
+  width: 62px;
+  height: 62px;
+  margin-top: -26px;
+  border-radius: 999px;
+  border: 4px solid var(--app-chrome-bg);
+  background: var(--app-btn);
+  color: var(--app-btn-text);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 18px var(--app-btn-shadow);
+  cursor: pointer;
+}
+
+/* ── sheet ── */
+.g-sheet-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--app-scrim);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.g-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow: auto;
+  background: var(--app-panel);
+  border-radius: 16px 16px 0 0;
+  border: 1px solid var(--app-border);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: sheet-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+.g-sheet-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--app-panel);
+  border-bottom: 1px solid var(--app-border-soft);
+}
+.g-sheet-body {
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+.g-sheet-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.g-photos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.g-photos figure {
+  margin: 0;
+}
+.g-photos img {
+  width: 100%;
+  border-radius: 10px;
+  display: block;
+  background: var(--app-surface-raised);
+}
+.g-photos figcaption {
+  font-size: 12px;
+  color: var(--app-text-faint);
+  margin-top: 4px;
+}
+.g-dl {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+.g-dl dt {
+  color: var(--app-text-faint);
+  font-size: 12px;
+  font-weight: 700;
+  padding-top: 2px;
+}
+.g-dl dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.g-settings h3 {
+  font-size: 15px;
+}
+
+/* ── capture ── */
+.g-form section {
+  display: grid;
+  gap: 8px;
+}
+.g-step {
+  font-family: 'Lexend Deca', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-muted);
+}
+.g-shots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.g-shot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  height: 150px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--app-border-strong);
+  background: var(--app-surface-soft);
+  color: var(--app-text-muted);
+  overflow: hidden;
+  cursor: pointer;
+}
+.g-shot img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.g-shot.has-shot {
+  border-style: solid;
+  border-color: var(--app-success-border);
+}
+.g-shot-label,
+.g-shot-hint {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.g-shot-label {
+  font-weight: 700;
+  font-size: 13px;
+}
+.g-shot-hint {
+  font-size: 11px;
+  color: var(--app-text-faint);
+}
+.g-shot.has-shot .g-shot-label,
+.g-shot.has-shot .g-shot-hint {
+  align-self: end;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.g-shot.has-shot {
+  align-content: end;
+  padding-bottom: 8px;
+}
+
+.g-plate-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 1.2fr;
+  gap: 8px;
+}
+.g-plate-num {
+  font-family: 'Lexend Deca', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.g-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.g-note svg {
+  flex: none;
+  margin-top: 1px;
+}
+.g-note-info {
+  background: var(--app-info-bg);
+  color: var(--app-info);
+}
+.g-note-ok {
+  background: var(--app-success-bg);
+  color: var(--app-success);
+}
+.g-note-warn {
+  background: var(--app-warning-bg);
+  color: var(--app-warning);
+}
+
+.g-types {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.g-type {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 6px;
+  min-height: 78px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-panel);
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.g-type.is-on {
+  border-color: var(--app-accent);
+  background: var(--app-accent-bg);
+  color: var(--app-accent);
+  box-shadow: 0 0 0 1px var(--app-accent) inset;
+}
+
+.g-gps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 13px;
+  background: var(--app-surface-soft);
+  border: 1px solid var(--app-border);
+}
+.g-gps-fixed {
+  color: var(--app-success);
+  border-color: var(--app-success-border);
+  background: var(--app-success-bg);
+}
+.g-gps-unavailable {
+  color: var(--app-warning);
+}
+
+.g-capture .g-main {
+  padding-bottom: calc(130px + env(safe-area-inset-bottom));
+}
+.g-capture-foot {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: 100%;
+  max-width: 560px;
+  z-index: 30;
+  padding: 12px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--app-chrome-bg);
+  border-top: 1px solid var(--app-border);
+}
+
+@media (max-width: 360px) {
+  .g-types {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* The toast must never sit on the record button: lift it above the nav bar,
+   and let taps pass through it. */
+.g-shell ~ .toast,
+.g-shell .toast {
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}

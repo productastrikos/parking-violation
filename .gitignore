@@ -1,0 +1,8 @@
+node_modules
+dist
+dev-dist
+server/data
+.env
+*.log
+public/ocr
+other_project
