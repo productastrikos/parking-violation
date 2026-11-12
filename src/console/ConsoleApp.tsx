@@ -281,7 +281,7 @@ function Shell({ session, onSignOut }: { session: ConsoleSession; onSignOut: () 
           ) : page === 'dashboard' ? (
             <DashboardPage live={live} nav={nav} />
           ) : page === 'violations' ? (
-            <ViolationsPage live={live} nav={nav} query={query} key={JSON.stringify(query)} />
+            <ViolationsPage live={live} nav={nav} query={query} role={session.user.role} key={JSON.stringify(query)} />
           ) : page === 'advisory' ? (
             <AdvisoryPage live={live} nav={nav} focusArea={area} />
           ) : (

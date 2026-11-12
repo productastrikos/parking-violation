@@ -125,9 +125,14 @@ tab of the site and reopen. From then on updates arrive automatically. Phones: o
 
 ## 6. Fine printer
 
-Nothing to set up on the server: printing happens on the phone. Direct Bluetooth printing needs the HTTPS
-URL, which it already has. Guards configure the printer per phone under **Settings → Fine printer**
+Printing happens on the phone, so there is nothing to install on the server. Direct Bluetooth printing needs the
+HTTPS URL, which the app already uses. Guards set up the printer on each phone under **Settings → Fine printer**
 (see DEMO.md → Fine printer).
+
+The server keeps the **print log** (`notices` on each violation; `POST /api/violations/:id/notice`) and the
+**fine schedule** (`GET/PUT /api/fines`, editable by supervisor and admin, with every change logged). Both are
+stored in `server/data/store.json`. The schedule starts from the sample amounts in `shared/catalog.js`.
+**Restart the backend after updating** so it serves these endpoints.
 
 ## 7. Reset demo data
 

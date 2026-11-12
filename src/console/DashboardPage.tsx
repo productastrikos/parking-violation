@@ -18,6 +18,7 @@ import { PlateChip, useNow } from '../lib/ui';
 import type { Live } from './useLive';
 import type { Nav } from './ConsoleApp';
 import { Kpi, MapView, StatusChip, TypeCell } from './parts';
+import { fmtAed } from '../lib/notice';
 import { ForecastChart, PRIORITY } from './advisory';
 
 type Filter = 'today' | 'offline' | 'new' | 'all';
@@ -223,10 +224,18 @@ export default function DashboardPage({ live, nav }: { live: Live; nav: Nav }) {
         </div>
       )}
 
-      <div className="c-kpis">
+      <div className="c-kpis c-kpis-5">
         <Kpi label="Violations today" value={stats?.today ?? 0} sub={`${stats?.total ?? 0} on record`} active={filter === 'today'} onClick={() => setFilter('today')} />
         <Kpi label="Captured offline" value={stats?.offlineTotal ?? 0} sub={`${stats?.todayOffline ?? 0} today · synced later`} tone="warning" active={filter === 'offline'} onClick={() => setFilter('offline')} />
         <Kpi label="Awaiting review" value={stats?.awaitingReview ?? 0} sub={stats?.corrections ? `${stats.corrections} mistake report${stats.corrections > 1 ? 's' : ''} from guards` : 'status: New'} tone="info" active={filter === 'new'} onClick={() => setFilter('new')} />
+        <Kpi
+          label="Notices issued today"
+          value={stats?.noticesToday ?? 0}
+          sub={fmtAed(stats?.finesTodayAed ?? 0) + (stats?.reprintsToday ? ' · ' + stats.reprintsToday + ' reprint' + (stats.reprintsToday > 1 ? 's' : '') : '')}
+          tone="danger"
+          onClick={() => nav.go('violations')}
+          hint="Penalty notices handed to drivers today"
+        />
         <Kpi label="Devices online" value={`${online}/${devices.length}`} sub={`${stats?.guardsActive ?? 0} guards active`} tone="success" active={filter === 'all'} onClick={() => setFilter('all')} hint="Show all records" />
       </div>
 

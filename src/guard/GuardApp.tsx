@@ -33,7 +33,7 @@ import { useGpsMode, setGpsMode, wasAutoSwitched } from './offline/location';
 import { warmUpOcr } from './offline/plateOcr';
 import CaptureFlow from './CaptureFlow';
 import { Confirm, AskReason } from './Sheet';
-import { PrintSheet, PrinterSettingsSection } from './PrintNotice';
+import { PrintSheet, PrinterSettingsSection, FineScheduleSection } from './PrintNotice';
 import { getPrinter } from './print/printer';
 import './guard.css';
 
@@ -1083,6 +1083,7 @@ function SettingsTab({ session, onSignOut }: { session: Session; onSignOut: () =
       </section>
 
       <PrinterSettingsSection officerName={session.user.name} officerId={session.user.id} />
+      <FineScheduleSection role={session.user.role} />
 
       <div className="n-group-label">This device</div>
       <section className="n-card n-group">

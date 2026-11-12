@@ -555,3 +555,27 @@ textarea {
   right: 2px;
   top: 2px;
 }
+
+/* Printing a penalty notice (guard app: AirPrint / system print; dashboard: office copy) — only the notice goes to paper. */
+#pp-print-root {
+  display: none;
+}
+@media print {
+  @page {
+    margin: 3mm;
+  }
+  body > *:not(#pp-print-root) {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  #pp-print-root {
+    display: block !important;
+  }
+  #pp-print-root img {
+    display: block;
+    margin: 0 auto;
+  }
+}

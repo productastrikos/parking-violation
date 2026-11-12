@@ -10,13 +10,15 @@
  * the fines but stay here under "Voided", with who, when and why.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Eye, Flag, Pencil, Search, Sparkles, WifiOff, X, ArrowDown, ArrowUp, Gavel, CheckCheck, Ban } from 'lucide-react';
+import { Download, Eye, Flag, Pencil, Search, Sparkles, WifiOff, X, ArrowDown, ArrowUp, Gavel, CheckCheck, Ban, Printer, ReceiptText } from 'lucide-react';
 import { AREAS, STATUSES, VIOLATION_TYPES, areaOf, emirateOf, fmtDate, fmtTime, typeOf, type Violation } from '../lib/api';
 import { PlateChip } from '../lib/ui';
 import { plateKey } from '../../shared/intel.js';
 import type { Live } from './useLive';
 import type { Nav } from './ConsoleApp';
 import { StatusChip, TypeCell, useToast } from './parts';
+import { FinesModal } from './Notices';
+import { fmtAed } from '../lib/notice';
 
 export interface ViolationQuery {
   preset?: string; // 'high-new'
@@ -27,7 +29,11 @@ type Period = 'today' | '7d' | '30d' | 'all';
 type SortKey = 'captured' | 'plate' | 'type' | 'area' | 'guard' | 'status';
 const PAGE = 50;
 
-export default function ViolationsPage({ live, nav, query }: { live: Live; nav: Nav; query: ViolationQuery | null }) {
+type NoticeFilter = 'all' | 'printed' | 'unprinted' | 'reprinted';
+
+export default function ViolationsPage({ live, nav, query, role }: { live: Live; nav: Nav; query: ViolationQuery | null; role: string }) {
+  const [finesOpen, setFinesOpen] = useState(false);
+  const [notice, setNotice] = useState<NoticeFilter>('all');
   const toast = useToast();
   const [q, setQ] = useState('');
   const [status, setStatus] = useState(query?.preset === 'high-new' ? 'new' : 'all');
@@ -59,6 +65,10 @@ export default function ViolationsPage({ live, nav, query }: { live: Live; nav: 
       if (v.capturedAt < from) return false;
       if (offlineOnly && !v.capturedOffline) return false;
       if (mistakesOnly && v.correction?.state !== 'pending') return false;
+      const prints = v.notices?.length ?? 0;
+      if (notice === 'printed' && !prints) return false;
+      if (notice === 'unprinted' && prints) return false;
+      if (notice === 'reprinted' && prints < 2) return false;
       if (plate && plateKey(v.plate) !== plate) return false;
       if (needle) {
         const hay = `${v.plate.code}${v.plate.number} ${v.plate.number} ${v.ref} ${v.guardName} ${v.notes} ${v.location.landmark}`.toLowerCase().replace(/\s+/g, '');
@@ -83,14 +93,14 @@ export default function ViolationsPage({ live, nav, query }: { live: Live; nav: 
       }
     };
     return list.sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
-  }, [live.violations, q, status, severity, type, area, guard, period, offlineOnly, mistakesOnly, plate, sort]);
+  }, [live.violations, q, status, severity, type, area, guard, period, offlineOnly, mistakesOnly, plate, sort, notice]);
 
-  useEffect(() => setPage(0), [q, status, severity, type, area, guard, period, offlineOnly, mistakesOnly, plate]);
+  useEffect(() => setPage(0), [q, status, severity, type, area, guard, period, offlineOnly, mistakesOnly, plate, notice]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const rows = filtered.slice(page * PAGE, page * PAGE + PAGE);
   const allOnPage = rows.length > 0 && rows.every((r) => sel.has(r.id));
   const mistakes = live.violations.filter((v) => v.correction?.state === 'pending' && !v.voided).length;
-  const activeFilters = [status !== 'all', severity !== 'all', type !== 'all', area !== 'all', guard !== 'all', offlineOnly, mistakesOnly, Boolean(plate), Boolean(q)].filter(Boolean).length;
+  const activeFilters = [status !== 'all', severity !== 'all', type !== 'all', area !== 'all', guard !== 'all', offlineOnly, mistakesOnly, Boolean(plate), Boolean(q), notice !== 'all'].filter(Boolean).length;
 
   function reset() {
     setQ('');
@@ -103,6 +113,7 @@ export default function ViolationsPage({ live, nav, query }: { live: Live; nav: 
     setOfflineOnly(false);
     setMistakesOnly(false);
     setPlate('');
+    setNotice('all');
   }
 
   function toggle(id: string) {
@@ -130,12 +141,13 @@ export default function ViolationsPage({ live, nav, query }: { live: Live; nav: 
   function exportCsv(list: Violation[]) {
     const esc = (x: unknown) => `"${String(x ?? '').replace(/"/g, '""')}"`;
     const iso = (t?: number) => (t ? new Date(t).toISOString() : '');
-    const head = ['ref', 'type', 'severity', 'emirate', 'code', 'number', 'area', 'landmark', 'lat', 'lng', 'demo_gps', 'guard', 'captured_at', 'received_at', 'captured_offline', 'status', 'voided', 'void_reason', 'edits', 'notes'];
+    const head = ['ref', 'type', 'severity', 'emirate', 'code', 'number', 'area', 'landmark', 'lat', 'lng', 'demo_gps', 'guard', 'captured_at', 'received_at', 'captured_offline', 'status', 'voided', 'void_reason', 'edits', 'notes', 'notice_issued_at', 'notice_issued_by', 'fine_aed', 'notice_prints'];
     const lines = list.map((v) =>
       [
         v.ref, typeOf(v.type)?.label, v.severity, emirateOf(v.plate.emirate)?.label, v.plate.code, v.plate.number, areaOf(v.location.areaId)?.label, v.location.landmark,
         v.location.gps?.lat, v.location.gps?.lng, v.location.gps?.demo ? 'yes' : 'no', v.guardName, iso(v.capturedAt), iso(v.receivedAt), v.capturedOffline ? 'yes' : 'no',
         v.status, v.voided ? 'yes' : 'no', v.voidReason, v.edits?.length ?? 0, v.notes,
+        iso(v.notices?.[0]?.at), v.notices?.[0]?.by, v.notices?.[0]?.notice.fine, v.notices?.length ?? 0,
       ].map(esc).join(','),
     );
     const blob = new Blob([`﻿${[head.join(','), ...lines].join('\n')}`], { type: 'text/csv;charset=utf-8' });
@@ -220,6 +232,12 @@ export default function ViolationsPage({ live, nav, query }: { live: Live; nav: 
               </option>
             ))}
           </select>
+          <select className="select c-select" value={notice} onChange={(e) => setNotice(e.target.value as NoticeFilter)} aria-label="Penalty notice">
+            <option value="all">Any notice</option>
+            <option value="printed">Notice printed</option>
+            <option value="unprinted">Not printed</option>
+            <option value="reprinted">Printed more than once</option>
+          </select>
           <label className="c-check">
             <input type="checkbox" checked={offlineOnly} onChange={(e) => setOfflineOnly(e.target.checked)} /> Captured offline
           </label>
@@ -268,6 +286,9 @@ export default function ViolationsPage({ live, nav, query }: { live: Live; nav: 
                 {status === 'voided' ? ' · voided records are excluded from KPIs and fines' : ''}
               </span>
               <span style={{ flex: 1 }} />
+              <button className="btn btn-sm" onClick={() => setFinesOpen(true)}>
+                <ReceiptText size={14} /> Fine schedule
+              </button>
               <button className="btn btn-sm" onClick={() => exportCsv(filtered)} disabled={!filtered.length}>
                 <Download size={14} /> Export {filtered.length}
               </button>
@@ -362,6 +383,12 @@ export default function ViolationsPage({ live, nav, query }: { live: Live; nav: 
                           <Sparkles size={12} />
                         </span>
                       )}
+                      {(v.notices?.length ?? 0) > 0 && (
+                        <span className={'c-flag is-print'} title={noticeTitle(v)}>
+                          <Printer size={12} />
+                          {v.notices!.length > 1 ? <span className="c-flag-n">{v.notices!.length}</span> : null}
+                        </span>
+                      )}
                       {v.voided && (
                         <span className="c-flag is-danger" title={v.voidReason}>
                           <Ban size={12} />
@@ -400,6 +427,12 @@ export default function ViolationsPage({ live, nav, query }: { live: Live; nav: 
           </div>
         )}
       </section>
+      {finesOpen && <FinesModal live={live} role={role} onClose={() => setFinesOpen(false)} />}
     </>
   );
+}
+
+function noticeTitle(v: Violation) {
+  const ps = v.notices ?? [];
+  return 'Notice printed ' + ps.length + '× · ' + fmtAed(ps[0]?.notice.fine) + ' · first by ' + (ps[0]?.by ?? '');
 }

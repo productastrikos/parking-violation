@@ -373,10 +373,26 @@ app.post('/api/violations/:id/correction', requireUser, (req, res) => {
   res.json({ violation: { id: v.id, status: v.status, voided: v.voided, correction: v.correction } });
 });
 
+/* A penalty notice was printed — on a guard's phone (queued offline, retried by opId) or as an office copy. */
+app.post('/api/violations/:id/notice', requireUser, (req, res) => {
+  const surface = req.user.role === 'guard' ? 'app' : 'dashboard';
+  const v = store.recordNoticePrint(req.params.id, req.body ?? {}, req.user, surface);
+  emitUpdated(v);
+  res.json({ violation: surface === 'app' ? { id: v.id, status: v.status, notices: v.notices.length } : v });
+});
+
 app.post('/api/violations/:id/correction/dismiss', requireUser, console_, (req, res) => {
   const v = store.dismissCorrection(req.params.id, str(req.body?.note, 300), req.user);
   emitUpdated(v);
   res.json({ violation: v });
+});
+
+/* Fine schedule: everyone signed in reads it (phones cache it for offline); supervisors and admins change it. */
+app.get('/api/fines', requireUser, (_req, res) => res.json(store.fines()));
+app.put('/api/fines', requireUser, console_, (req, res) => {
+  const f = store.updateFines(req.body?.changes, req.body?.reason, req.user);
+  io.emit('fines:changed', { fines: f }); // dashboards and phones pick up the new amounts at once
+  res.json(f);
 });
 
 app.get('/api/stats', requireUser, console_, (_req, res) => res.json(store.stats()));
@@ -386,7 +402,7 @@ app.get('/api/export.csv', requireUser, console_, (req, res) => {
   const ids = req.query.ids ? new Set(String(req.query.ids).split(',')) : null;
   const esc = (x) => `"${String(x ?? '').replace(/"/g, '""')}"`;
   const iso = (t) => (t ? new Date(t).toISOString() : '');
-  const head = ['ref', 'type', 'severity', 'plate_emirate', 'plate_code', 'plate_number', 'area', 'landmark', 'lat', 'lng', 'guard', 'device', 'captured_at', 'received_at', 'captured_offline', 'status', 'voided', 'void_reason', 'edits', 'notes'];
+  const head = ['ref', 'type', 'severity', 'plate_emirate', 'plate_code', 'plate_number', 'area', 'landmark', 'lat', 'lng', 'guard', 'device', 'captured_at', 'received_at', 'captured_offline', 'status', 'voided', 'void_reason', 'edits', 'notes', 'notice_issued_at', 'notice_issued_by', 'fine_aed', 'notice_prints'];
   const rows = store
     .violations()
     .filter((v) => !ids || ids.has(v.id))
@@ -396,6 +412,7 @@ app.get('/api/export.csv', requireUser, console_, (req, res) => {
         areaById(v.location?.areaId)?.label ?? '', v.location?.landmark, v.location?.gps?.lat, v.location?.gps?.lng,
         v.guardName, v.deviceLabel, iso(v.capturedAt), iso(v.receivedAt), v.capturedOffline ? 'yes' : 'no', v.status,
         v.voided ? 'yes' : 'no', v.voidReason ?? '', v.edits?.length ?? 0, v.notes,
+        iso(v.notices?.[0]?.at), v.notices?.[0]?.by ?? '', v.notices?.[0]?.notice?.fine ?? '', v.notices?.length ?? 0,
       ].map(esc).join(','),
     );
   res.set('Content-Type', 'text/csv; charset=utf-8');
@@ -415,7 +432,7 @@ app.get('/api/intel/field', requireUser, (req, res) => {
     .violations()
     .filter((v) => v.guardId === req.user.id && v.receivedAt >= since)
     .map((v) => ({ id: v.id, status: v.status, voided: v.voided, voidReason: v.voidReason, correction: v.correction ?? null, edited: (v.edits?.length ?? 0) > 0, plate: v.plate, type: v.type }));
-  res.json({ ...fieldPack({ violations: store.violations() }, req.user), mine });
+  res.json({ ...fieldPack({ violations: store.violations() }, req.user), mine, fines: store.fines(10) });
 });
 
 /* The written brief. The model only words what the engine computed — every number comes from the pack. */

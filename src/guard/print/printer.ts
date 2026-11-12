@@ -21,27 +21,19 @@
 import { useSyncExternalStore } from 'react';
 import { isIOS } from '../offline/device';
 import { canvasToEscPos } from './escpos';
+import { DEFAULT_LAYOUT, printImage, type NoticeLayout } from '../../lib/notice';
 
 export type PrintMethod = 'bluetooth' | 'rawbt' | 'share' | 'system';
 export type Paper = 58 | 80;
 
-export interface PrinterSettings {
+/** Notice layout (paper, authority header, terms, days to pay) + how this phone reaches its printer. */
+export interface PrinterSettings extends NoticeLayout {
   method: PrintMethod;
-  paper: Paper;
-  /** Header of the notice — the issuing authority, not the software vendor. */
-  authority: string;
-  department: string;
-  footer: string;
-  payDays: number;
   /** After saving a new violation, open the print screen. */
   offerAfterSave: boolean;
   btName?: string;
   btId?: string;
 }
-
-export const DEFAULT_FOOTER =
-  'Pay the fine within the period shown at any authorised payment centre or online, quoting the notice number. ' +
-  'Unpaid fines may attract additional charges. To object, submit an appeal within 15 days of issue.';
 
 const KEY = 'pp.printer';
 export const hasWebBluetooth = () => typeof navigator !== 'undefined' && 'bluetooth' in navigator;
@@ -57,11 +49,7 @@ export const canShareFiles = () => {
 function defaults(): PrinterSettings {
   return {
     method: hasWebBluetooth() ? 'bluetooth' : isIOS() ? 'share' : 'system',
-    paper: 58,
-    authority: 'Municipal Parking Enforcement',
-    department: 'Traffic & Parking Control Section',
-    footer: DEFAULT_FOOTER,
-    payDays: 30,
+    ...DEFAULT_LAYOUT,
     offerAfterSave: true,
   };
 }
@@ -87,6 +75,7 @@ export function setPrinter(p: Partial<PrinterSettings>) {
   }
   listeners.forEach((l) => l());
 }
+export const layoutOf = (p: PrinterSettings): NoticeLayout => ({ paper: p.paper, authority: p.authority, department: p.department, footer: p.footer, payDays: p.payDays });
 export function resetPrinterText() {
   const d = defaults();
   setPrinter({ authority: d.authority, department: d.department, footer: d.footer, payDays: d.payDays });
@@ -332,19 +321,7 @@ export async function shareImage(canvas: HTMLCanvasElement, name: string) {
 }
 
 export async function systemPrint(canvas: HTMLCanvasElement, paper: Paper) {
-  let root = document.getElementById('pp-print-root');
-  if (!root) {
-    root = document.createElement('div');
-    root.id = 'pp-print-root';
-    document.body.appendChild(root);
-  }
-  const img = new Image();
-  img.src = canvas.toDataURL('image/png');
-  img.style.width = `${paper - 6}mm`;
-  img.alt = 'Penalty notice';
-  root.replaceChildren(img);
-  await img.decode().catch(() => {});
-  window.print();
+  await printImage(canvas, paper - 6);
   return 'Sent to the print dialog';
 }
 

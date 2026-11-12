@@ -124,6 +124,7 @@ export default function TeamPage({ live, token, me }: { live: Live; token: strin
                 <th className="num">Today</th>
                 <th className="num">Total</th>
                 <th className="num">Captured offline</th>
+                <th className="num" title="Penalty notices issued today / total · duplicates printed">Notices</th>
                 <th>Last record</th>
                 <th />
               </tr>
@@ -170,6 +171,16 @@ export default function TeamPage({ live, token, me }: { live: Live; token: strin
                     <td className="num">{r.today}</td>
                     <td className="num">{r.total}</td>
                     <td className="num">{r.offlineCaptured}</td>
+                    <td className="num" title={(r.noticesToday ?? 0) + ' today · ' + (r.notices ?? 0) + ' total · ' + (r.reprints ?? 0) + ' duplicates'}>
+                      {r.role === 'guard' ? (
+                        <>
+                          {r.noticesToday ?? 0} / {r.notices ?? 0}
+                          {r.reprints ? <span className="faint"> · {r.reprints} dup</span> : null}
+                        </>
+                      ) : (
+                        <span className="faint">—</span>
+                      )}
+                    </td>
                     <td className="faint">{r.lastRecord ? ago(r.lastRecord, now) : '—'}</td>
                     <td>
                       <div className="c-row-actions">

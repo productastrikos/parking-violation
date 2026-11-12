@@ -27,8 +27,10 @@
  *   400/422  → rejected by validation: kept, shown to the guard with the reason
  *   other    → network or server trouble: stop, retry on the next trigger
  */
+import { useSyncExternalStore } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { API_URL, SOCKET_URL, APP_VERSION, type Violation } from '../../lib/api';
+import { setFines, type FineSchedule } from '../../lib/fines';
 import { allRecords, photosFor, markSynced, updateRecord, getRecord, type LocalRecord } from './db';
 import { credentialFor, invalidateToken, getSession } from './offlineAuth';
 import { deviceInfo, deviceLabel, platformLabel } from './device';
@@ -175,12 +177,18 @@ async function sendOps() {
     const cred = await credentialFor(op.guardId);
     if (!cred?.token) continue;
     try {
-      const res = await fetch(`${API_URL}/api/violations/${op.violationId}/correction`, {
+      const notice = op.kind === 'notice';
+      const res = await fetch(`${API_URL}/api/violations/${op.violationId}/${notice ? 'notice' : 'correction'}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${cred.token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: op.reason, opId: op.id }),
+        body: JSON.stringify(notice ? { ...op.notice, opId: op.id } : { reason: op.reason, opId: op.id }),
       });
-      if (res.ok) {
+      // A notice printed before its record uploaded: the record is not on the server yet — keep it queued.
+      if (notice && res.status === 404) continue;
+      if (res.ok && notice) {
+        await updateOp(op.id, { state: 'done' });
+        void refreshFieldPack(true);
+      } else if (res.ok) {
         await updateOp(op.id, { state: 'done' });
         // The server has it now: no longer 'queued' on this phone.
         const rec = await getRecord(op.violationId);
@@ -218,6 +226,26 @@ export function subscribePack(l: () => void) {
   return () => packListeners.delete(l);
 }
 
+/** Change fine amounts (supervisor in the app). Needs a connection — it is a decision, not a record. */
+/** React hook for the connection/sync status (for screens outside GuardApp.tsx). */
+export const useSyncStatus = () => useSyncExternalStore(subscribe, getStatus);
+
+export async function saveFines(changes: Record<string, number | null>, reason: string): Promise<FineSchedule> {
+  const session = await getSession();
+  const cred = session && (await credentialFor(session.user.id));
+  if (!cred?.token) throw new Error('Sign in online to change fines');
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/fines`, { method: 'PUT', headers: { Authorization: `Bearer ${cred.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ changes, reason }) });
+  } catch {
+    throw new Error('No connection — fines can only be changed online');
+  }
+  const body = (await res.json().catch(() => ({}))) as FineSchedule & { error?: string };
+  if (!res.ok) throw new Error(body.error || `Server error ${res.status}`);
+  setFines(body);
+  return body;
+}
+
 export async function refreshFieldPack(force = false) {
   if (!force && Date.now() - packFetchedAt < 60_000) return;
   const session = await getSession();
@@ -230,6 +258,7 @@ export async function refreshFieldPack(force = false) {
     const p = (await res.json()) as FieldPack;
     packFetchedAt = Date.now();
     pack = p;
+    setFines(p.fines);
     await kvSet('fieldPack', p);
     packListeners.forEach((l) => l());
     if (await applyServerState(p.mine)) recordsChanged();
@@ -344,6 +373,8 @@ export async function connectSocket() {
   socket.on('auth:invalid', () => void invalidateToken(session.user.id));
   // The control room changed one of this guard's records (fine issued, corrected, voided): refresh now.
   socket.on('mine:changed', () => void refreshFieldPack(true));
+  // A supervisor or admin changed the fine schedule: new notices use the new amounts at once.
+  socket.on('fines:changed', (p: { fines: FineSchedule }) => setFines(p.fines));
 
   // Where the guard is, for the control room's live map (demo or real, labelled).
   clearInterval(posTimer);

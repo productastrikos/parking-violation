@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { SEED_USERS, SEED_PASSWORD, buildSeedViolations } from './seed.js';
+import { VIOLATION_TYPES } from '../../shared/catalog.js';
 
 const DATA_DIR = path.resolve(import.meta.dirname, '..', 'data');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
@@ -61,12 +62,18 @@ function fresh() {
   };
 }
 
+/** The sample schedule from the catalog — the starting point; supervisors/admins change it. */
+const catalogFines = () => Object.fromEntries(VIOLATION_TYPES.map((t) => [t.id, { fine: t.fine ?? null, code: t.code ?? '' }]));
+
 function migrate(s) {
   s.users ||= [];
   s.sessions ||= {};
   s.devices ||= {};
   s.violations ||= [];
   s.audit ||= [];
+  s.fines ||= { schedule: {}, updatedAt: null, updatedBy: null, history: [] };
+  // A violation type added to the catalog later gets its sample fine; amounts someone set are kept.
+  for (const [id, e] of Object.entries(catalogFines())) s.fines.schedule[id] ??= e;
   if ((s.seedVersion ?? 1) < SEED_VERSION) {
     const real = s.violations.filter((v) => !v.seeded);
     s.violations = [...real, ...buildSeedViolations()].sort((a, b) => b.capturedAt - a.capturedAt);
@@ -339,12 +346,111 @@ export function dismissCorrection(id, note, actor) {
   return v;
 }
 
+/* ── penalty notices: every print, for accountability ──────────────────────
+   A print is logged once (idempotent by opId — phones retry from their
+   outbox) with WHO printed it, WHEN, on WHICH device and printer, and a
+   snapshot of exactly what the paper says. The first print issues the fine:
+   a New/Reviewed record moves to "Fine issued". */
+const num = (x) => (Number.isFinite(Number(x)) ? Number(x) : null);
+const txt = (x, max = 200) => String(x ?? '').trim().slice(0, max);
+function cleanNotice(n = {}) {
+  const l = n.layout ?? {};
+  return {
+    ref: txt(n.ref, 40),
+    issuedAt: num(n.issuedAt),
+    dueAt: num(n.dueAt),
+    observedAt: num(n.observedAt),
+    plate: { emirate: txt(n.plate?.emirate, 4), code: txt(n.plate?.code, 4), number: txt(n.plate?.number, 8) },
+    typeId: txt(n.typeId, 40),
+    typeLabel: txt(n.typeLabel, 120),
+    code: txt(n.code, 16),
+    fine: num(n.fine),
+    details: n.details ? txt(n.details, 600) : undefined,
+    areaLabel: txt(n.areaLabel, 120),
+    landmark: txt(n.landmark, 120),
+    gps: n.gps && num(n.gps.lat) != null ? { lat: num(n.gps.lat), lng: num(n.gps.lng), demo: Boolean(n.gps.demo) } : null,
+    officerName: txt(n.officerName, 80),
+    officerId: txt(n.officerId, 40),
+    photos: num(n.photos) ?? 0,
+    layout: { paper: num(l.paper) === 80 ? 80 : 58, authority: txt(l.authority, 120), department: txt(l.department, 120), footer: txt(l.footer, 800), payDays: num(l.payDays) ?? 30 },
+    copy: ['original', 'duplicate', 'office'].includes(n.copy) ? n.copy : 'original',
+    printedAt: num(n.printedAt) ?? undefined,
+  };
+}
+
+export function recordNoticePrint(id, input, actor, surface) {
+  const v = findViolation(id);
+  if (!v || (actor.role === 'guard' && v.guardId !== actor.id)) throw httpError(404, 'Not found');
+  v.notices ??= [];
+  const opId = txt(input.opId, 64);
+  if (opId && v.notices.some((p) => p.id === opId)) return v;
+  const notice = cleanNotice(input.notice);
+  if (!notice.issuedAt || !notice.ref) throw httpError(400, 'Notice details missing');
+  // The first print anywhere is the original (it issues the fine); later ones are duplicates (phone) or office copies.
+  const copy = v.notices.length === 0 ? 'original' : surface === 'dashboard' ? 'office' : 'duplicate';
+  const at = Date.now();
+  const p = {
+    id: opId || crypto.randomUUID(),
+    no: v.notices.length + 1,
+    at: num(input.at) ?? at,
+    receivedAt: at,
+    copy,
+    surface,
+    byId: actor.id,
+    by: actor.name,
+    deviceId: txt(input.deviceId, 64) || undefined,
+    deviceLabel: txt(input.deviceLabel, 80) || (surface === 'dashboard' ? 'Dashboard' : undefined),
+    method: txt(input.method, 20),
+    printer: txt(input.printer, 80) || undefined,
+    notice: { ...notice, copy },
+  };
+  v.notices.push(p);
+  const what = p.copy === 'original' ? 'Penalty notice issued & printed' : p.copy === 'office' ? 'Office copy of the notice printed' : 'Duplicate notice printed';
+  const amount = notice.fine != null ? `AED ${notice.fine.toLocaleString('en-US')}` : 'amount to be assessed';
+  v.history.push({ at: p.at, by: actor.name, action: what, note: `${notice.ref} · ${amount}${p.printer ? ` · ${p.printer}` : ''}` });
+  // Handing the driver the notice IS issuing the fine.
+  if (!v.voided && p.copy === 'original' && (v.status === 'new' || v.status === 'reviewed')) {
+    const from = v.status;
+    v.status = 'actioned';
+    v.history.push({ at: p.at, by: actor.name, action: `Status: ${from} → actioned`, note: 'notice handed to the driver' });
+  }
+  v.updatedAt = at;
+  audit('violation.notice', actor, { id: v.id, no: p.no, copy: p.copy, method: p.method, fine: notice.fine, surface });
+  return v;
+}
+
 export function setAi(id, ai) {
   const v = findViolation(id);
   if (!v) return null;
   v.ai = { ...(v.ai ?? {}), ...ai };
   persist();
   return v;
+}
+
+/* ── fine schedule ──────────────────────────────────────────────────────── */
+export const fines = (historyLimit = 50) => ({ schedule: state.fines.schedule, updatedAt: state.fines.updatedAt, updatedBy: state.fines.updatedBy, history: state.fines.history.slice(-historyLimit).reverse() });
+
+/** Change fine amounts. changes: { [typeId]: number | null } (null = assessed later). Every change is kept. */
+export function updateFines(changes, reason, actor) {
+  const why = String(reason || '').trim();
+  if (why.length < 3) throw httpError(400, 'Give a reason for the change (at least 3 characters)');
+  const list = [];
+  for (const [typeId, raw] of Object.entries(changes ?? {})) {
+    const cur = state.fines.schedule[typeId];
+    if (!cur) throw httpError(400, `Unknown violation type: ${typeId}`);
+    const to = raw === null || raw === '' ? null : Number(raw);
+    if (to !== null && (!Number.isFinite(to) || to < 0 || to > 100_000)) throw httpError(400, 'A fine must be between AED 0 and 100,000');
+    const next = to === null ? null : Math.round(to * 100) / 100;
+    if (next !== cur.fine) list.push({ typeId, from: cur.fine, to: next });
+  }
+  if (!list.length) throw httpError(400, 'Nothing changed');
+  const at = Date.now();
+  for (const c of list) state.fines.schedule[c.typeId] = { ...state.fines.schedule[c.typeId], fine: c.to };
+  state.fines.history.push({ at, by: actor.name, byId: actor.id, role: actor.role, reason: why.slice(0, 300), changes: list });
+  state.fines.updatedAt = at;
+  state.fines.updatedBy = actor.name;
+  audit('fines.update', actor, { changes: list, reason: why });
+  return fines();
 }
 
 /** Start of "today" in the server's local time zone. */
@@ -367,7 +473,13 @@ export function stats() {
     last7.push({ day: from, count: vs.filter((v) => v.capturedAt >= from && v.capturedAt < to).length });
   }
   const ds = devices();
+  const firstPrints = vs.map((v) => v.notices?.[0]).filter(Boolean);
+  const issuedToday = firstPrints.filter((p) => p.at >= today);
   return {
+    noticesToday: issuedToday.length,
+    finesTodayAed: issuedToday.reduce((sum, p) => sum + (p.notice?.fine ?? 0), 0),
+    noticesTotal: firstPrints.length,
+    reprintsToday: vs.reduce((n, v) => n + (v.notices ?? []).filter((p) => p.copy !== 'original' && p.at >= today).length, 0),
     total: vs.length,
     today: todays.length,
     todayOffline: todays.filter((v) => v.capturedOffline).length,
@@ -396,6 +508,9 @@ export function teamRows() {
       today: mine.filter((v) => v.capturedAt >= today).length,
       total: mine.length,
       offlineCaptured: mine.filter((v) => v.capturedOffline).length,
+      noticesToday: mine.filter((v) => v.notices?.[0] && v.notices[0].at >= today && v.notices[0].byId === u.id).length,
+      notices: mine.filter((v) => v.notices?.some((p) => p.byId === u.id && p.copy === 'original')).length,
+      reprints: mine.reduce((n, v) => n + (v.notices ?? []).filter((p) => p.byId === u.id && p.copy === 'duplicate').length, 0),
       lastRecord,
       online: myDevices.some((d) => d.online),
       lastSeen: myDevices.reduce((m, d) => Math.max(m, d.lastSeen ?? 0), 0) || null,

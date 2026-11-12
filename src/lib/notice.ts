@@ -11,66 +11,113 @@
  * in Settings — never the software vendor.
  */
 import QRCode from 'qrcode';
-import { typeById, areaById, emirateById } from '../../../shared/catalog.js';
-import type { LocalRecord } from '../offline/db';
-import type { PrinterSettings } from './printer';
+import { typeById, areaById, emirateById } from '../../shared/catalog.js';
+import { fineFor } from './fines';
 
+/** How a notice is laid out — set per phone in Settings → Fine printer. */
+export interface NoticeLayout {
+  paper: 58 | 80;
+  authority: string;
+  department: string;
+  footer: string;
+  payDays: number;
+}
+
+export const DEFAULT_FOOTER =
+  'Pay the fine within the period shown at any authorised payment centre or online, quoting the notice number. ' +
+  'Unpaid fines may attract additional charges. To object, submit an appeal within 15 days of issue.';
+export const DEFAULT_LAYOUT: NoticeLayout = { paper: 58, authority: 'Municipal Parking Enforcement', department: 'Traffic & Parking Control Section', footer: DEFAULT_FOOTER, payDays: 30 };
+
+/**
+ * original   first notice handed to the driver (issues the fine)
+ * duplicate  a reprint from the phone
+ * office     a copy printed from the dashboard
+ * preview    not issued — drawn with a NOT ISSUED stamp
+ */
+export type NoticeCopy = 'original' | 'duplicate' | 'office' | 'preview';
+
+/**
+ * Everything printed on the paper. Stored with every print on the server as a
+ * snapshot, so the dashboard re-draws EXACTLY what the driver received — even
+ * if the fine schedule, the record or the phone's settings change later.
+ */
 export interface Notice {
   ref: string;
   issuedAt: number;
+  dueAt: number;
   observedAt: number;
   plate: { emirate: string; code: string; number: string };
   typeId: string;
-  notes?: string;
-  areaId: string;
+  typeLabel: string;
+  code: string;
+  fine: number | null;
+  details?: string;
+  areaLabel: string;
   landmark: string;
   gps: { lat: number; lng: number; demo?: boolean } | null;
   officerName: string;
   officerId: string;
-  device: string;
   photos: number;
-  duplicate: boolean;
+  layout: NoticeLayout;
+  copy: NoticeCopy;
+  /** When this copy came off the printer (a reprint or office copy of an earlier notice). */
+  printedAt?: number;
   specimen?: boolean;
 }
 
-export function noticeFromRecord(rec: LocalRecord): Notice {
-  const plate = rec.server?.plate ?? rec.plate;
+/** The record fields a notice is built from — a phone record or a server violation. */
+export interface NoticeSource {
+  ref: string;
+  type: string;
+  plate: { emirate: string; code: string; number: string };
+  location: { areaId: string; landmark: string; gps: { lat: number; lng: number; demo?: boolean } | null };
+  notes?: string;
+  guardName: string;
+  guardId: string;
+  capturedAt: number;
+  photoCount: number;
+}
+
+export function buildNotice(r: NoticeSource, layout: NoticeLayout, copy: NoticeCopy, issuedAt = Date.now()): Notice {
+  const t = typeById(r.type) as { label: string } | undefined;
+  const f = fineFor(r.type); // the current schedule (server-set, cached for offline)
   return {
-    ref: rec.ref,
-    issuedAt: Date.now(),
-    observedAt: rec.capturedAt,
-    plate: { emirate: plate.emirate, code: plate.code, number: plate.number },
-    typeId: rec.server?.type ?? rec.type,
-    notes: rec.notes,
-    areaId: rec.location.areaId,
-    landmark: rec.location.landmark,
-    gps: rec.location.gps,
-    officerName: rec.guardName,
-    officerId: rec.guardId,
-    device: rec.deviceLabel,
-    photos: rec.photoKinds.length,
-    duplicate: (rec.printCount ?? 0) > 0,
+    ref: r.ref,
+    issuedAt,
+    dueAt: issuedAt + layout.payDays * 86_400_000,
+    observedAt: r.capturedAt,
+    plate: { emirate: r.plate.emirate, code: r.plate.code, number: r.plate.number },
+    typeId: r.type,
+    typeLabel: (t?.label ?? r.type).replace(/ \(describe in notes\)$/, ''),
+    code: f.code,
+    fine: f.fine,
+    details: r.type === 'other' ? r.notes : undefined,
+    areaLabel: (areaById(r.location.areaId) as { label: string } | undefined)?.label ?? '',
+    landmark: r.location.landmark,
+    gps: r.location.gps ? { lat: r.location.gps.lat, lng: r.location.gps.lng, demo: r.location.gps.demo } : null,
+    officerName: r.guardName,
+    officerId: r.guardId,
+    photos: r.photoCount,
+    layout: { ...layout },
+    copy,
   };
 }
 
-export function specimenNotice(officerName: string, officerId: string): Notice {
+/** Another copy of an issued notice: same numbers and dates, new label and print time. */
+export const asCopy = (n: Notice, copy: NoticeCopy, printedAt = Date.now()): Notice => ({ ...n, copy, printedAt, specimen: false });
+
+export function specimenNotice(officerName: string, officerId: string, layout: NoticeLayout): Notice {
   return {
-    ref: 'PV-TEST-0000',
-    issuedAt: Date.now(),
-    observedAt: Date.now() - 4 * 60_000,
-    plate: { emirate: 'AD', code: '5', number: '12345' },
-    typeId: 'fire-lane',
-    areaId: 'khalidiyah',
-    landmark: 'Test print',
-    gps: { lat: 24.4718, lng: 54.3489, demo: true },
-    officerName,
-    officerId,
-    device: 'Test',
-    photos: 2,
-    duplicate: false,
+    ...buildNotice(
+      { ref: 'PV-TEST-0000', type: 'fire-lane', plate: { emirate: 'AD', code: '5', number: '12345' }, location: { areaId: 'khalidiyah', landmark: 'Test print', gps: { lat: 24.4718, lng: 54.3489, demo: true } }, guardName: officerName, guardId: officerId, capturedAt: Date.now() - 4 * 60_000, photoCount: 2 },
+      layout,
+      'original',
+    ),
     specimen: true,
   };
 }
+
+export const fmtAed = (n: number | null | undefined) => (n == null ? 'To be assessed' : `AED ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const p2 = (n: number) => String(n).padStart(2, '0');
@@ -286,7 +333,8 @@ const loadFonts = () =>
   (fontsReady ||= Promise.all([document.fonts?.load(`700 20px ${FONT}`), document.fonts?.load(`400 20px ${FONT}`)]).catch(() => {}));
 
 /** Draw the notice. Returns a pure black/white canvas at the printer's dot width. */
-export async function renderNotice(n: Notice, s: PrinterSettings): Promise<HTMLCanvasElement> {
+export async function renderNotice(n: Notice): Promise<HTMLCanvasElement> {
+  const s = n.layout;
   await loadFonts();
   const W = s.paper === 80 ? 576 : 384;
   const k = W / 384;
@@ -294,10 +342,9 @@ export async function renderNotice(n: Notice, s: PrinterSettings): Promise<HTMLC
   tall.width = W;
   tall.height = Math.round(2600 * k);
   const p = new Strip(tall, W, k, Math.round(8 * k));
-  const t = typeById(n.typeId) as { label: string; code?: string; fine?: number | null } | undefined;
-  const area = areaById(n.areaId) as { label: string } | undefined;
   const emirate = emirateById(n.plate.emirate) as { label: string } | undefined;
-  const dueAt = n.issuedAt + s.payDays * 86_400_000;
+  const dueAt = n.dueAt;
+  const payDays = Math.round((n.dueAt - n.issuedAt) / 86_400_000);
 
   p.gap(6);
   p.crest(46);
@@ -312,9 +359,10 @@ export async function renderNotice(n: Notice, s: PrinterSettings): Promise<HTMLC
   p.gap(6);
   p.kv('Notice No.', n.ref, { size: 20 });
   p.kv('Date issued', `${date(n.issuedAt)}  ${time(n.issuedAt)}`);
-  if (n.duplicate) {
+  if (n.copy === 'duplicate' || n.copy === 'office') {
     p.gap(2);
-    p.bar([{ t: 'DUPLICATE COPY', size: 17 }]);
+    p.bar([{ t: n.copy === 'office' ? 'OFFICE COPY' : 'DUPLICATE COPY', size: 17 }]);
+    if (n.printedAt) p.text(`Copy printed ${date(n.printedAt)}  ${time(n.printedAt)}`, { size: 14, align: 'center' });
     p.gap(4);
   }
 
@@ -323,11 +371,11 @@ export async function renderNotice(n: Notice, s: PrinterSettings): Promise<HTMLC
   p.kv('Registered', emirate?.label ?? n.plate.emirate ?? '—');
 
   p.section('Offence');
-  p.kv('Code', t?.code ?? '—');
-  p.kv('Offence', t?.label.replace(/ \(describe in notes\)$/, '') ?? n.typeId);
-  if (n.typeId === 'other' && n.notes) p.kv('Details', n.notes, { size: 17, weight: 400 });
+  p.kv('Code', n.code || '—');
+  p.kv('Offence', n.typeLabel);
+  if (n.details) p.kv('Details', n.details, { size: 17, weight: 400 });
   p.kv('Observed', `${date(n.observedAt)}  ${time(n.observedAt)}`);
-  p.kv('Location', [area?.label, n.landmark].filter(Boolean).join(' · ') || '—');
+  p.kv('Location', [n.areaLabel, n.landmark].filter(Boolean).join(' · ') || '—');
   if (n.gps) p.kv('GPS', `${n.gps.lat.toFixed(5)}, ${n.gps.lng.toFixed(5)}${n.gps.demo ? ' (demo)' : ''}`, { size: 17, weight: 400 });
   p.kv('Evidence', `${n.photos} photograph${n.photos === 1 ? '' : 's'} on record`, { size: 17, weight: 400 });
 
@@ -335,10 +383,10 @@ export async function renderNotice(n: Notice, s: PrinterSettings): Promise<HTMLC
   p.box(() => {
     p.text('FINE AMOUNT', { size: 16, weight: 700, align: 'center' });
     p.gap(2);
-    p.text(t?.fine != null ? money(t.fine) : 'TO BE ASSESSED', { size: t?.fine != null ? 34 : 26, weight: 700, align: 'center', lh: 1.15 });
+    p.text(n.fine != null ? money(n.fine) : 'TO BE ASSESSED', { size: n.fine != null ? 34 : 26, weight: 700, align: 'center', lh: 1.15 });
   });
   p.gap(8);
-  p.kv('Pay by', `${date(dueAt)}  (${s.payDays} days)`);
+  p.kv('Pay by', `${date(dueAt)}  (${payDays} days)`);
 
   p.section('Issuing officer');
   p.kv('Officer', n.officerName);
@@ -346,7 +394,7 @@ export async function renderNotice(n: Notice, s: PrinterSettings): Promise<HTMLC
 
   p.gap(6);
   p.rule('dashed');
-  p.qr(['PARKING PENALTY NOTICE', `No: ${n.ref}`, `Plate: ${plateText(n.plate)} (${n.plate.emirate})`, `Offence: ${t?.code ?? ''} ${t?.label ?? n.typeId}`, `Fine: ${t?.fine != null ? money(t.fine) : 'to be assessed'}`, `Issued: ${new Date(n.issuedAt).toISOString()}`, `Pay by: ${date(dueAt)}`].join('\n'), 176);
+  p.qr(['PARKING PENALTY NOTICE', `No: ${n.ref}`, `Plate: ${plateText(n.plate)} (${n.plate.emirate})`, `Offence: ${n.code} ${n.typeLabel}`, `Fine: ${n.fine != null ? money(n.fine) : 'to be assessed'}`, `Issued: ${new Date(n.issuedAt).toISOString()}`, `Pay by: ${date(dueAt)}`].join('\n'), 176);
   p.text('Scan to verify this notice', { size: 15, align: 'center' });
   p.gap(4);
   p.rule('dashed');
@@ -362,6 +410,7 @@ export async function renderNotice(n: Notice, s: PrinterSettings): Promise<HTMLC
   p.text('This notice was issued electronically and is valid without a stamp. Keep it for your records.', { size: 13, align: 'center', lh: 1.25 });
   p.gap(8);
   if (n.specimen) p.stamp('TEST PRINT', Math.round(200 * k), p.y - Math.round(120 * k));
+  else if (n.copy === 'preview') p.stamp('NOT ISSUED', Math.round(200 * k), p.y - Math.round(120 * k));
 
   // Crop and force pure black/white (thermal printers have no grey).
   const out = document.createElement('canvas');
@@ -378,4 +427,29 @@ export async function renderNotice(n: Notice, s: PrinterSettings): Promise<HTMLC
   }
   octx.putImageData(img, 0, 0);
   return out;
+}
+
+/** Print the notice picture through the browser's print dialog (AirPrint, Android print service, office printer). */
+export async function printImage(canvas: HTMLCanvasElement, widthMm: number) {
+  let root = document.getElementById('pp-print-root');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'pp-print-root';
+    document.body.appendChild(root);
+  }
+  const img = new Image();
+  img.src = canvas.toDataURL('image/png');
+  img.style.width = `${widthMm}mm`;
+  img.alt = 'Penalty notice';
+  root.replaceChildren(img);
+  await img.decode().catch(() => {});
+  window.print();
+}
+
+/** Save the notice picture as a PNG file. */
+export function downloadImage(canvas: HTMLCanvasElement, name: string) {
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = `${name}.png`;
+  a.click();
 }

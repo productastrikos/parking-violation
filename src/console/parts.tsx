@@ -7,8 +7,9 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
-  AlertTriangle, Ban, CheckCircle2, Clock, Flag, Hourglass, Image as ImageIcon, Loader2, MapPin, Pencil, RotateCcw, Save, ScanLine, Sparkles, User as UserIcon, WifiOff, X, Gavel, Eye, History,
+  Printer, AlertTriangle, Ban, CheckCircle2, Clock, Flag, Hourglass, Image as ImageIcon, Loader2, MapPin, Pencil, RotateCcw, Save, ScanLine, Sparkles, User as UserIcon, WifiOff, X, Gavel, Eye, History,
 } from 'lucide-react';
+import { NoticeSection } from './Notices';
 import {
   AREAS, CITY, EMIRATES, STATUSES, VIOLATION_TYPES, areaOf, duration, emirateOf, fmtDateTime, photoUrl, statusLabel, typeOf, type Device, type Hotspot, type Violation,
 } from '../lib/api';
@@ -420,6 +421,8 @@ export function ViolationDrawer({ v, live, onClose, startInEdit = false }: { v: 
                 )}
               </dl>
 
+              <NoticeSection v={v} live={live} />
+
               <div>
                 <div className="eyebrow" style={{ marginBottom: 10 }}>
                   Timeline
@@ -459,7 +462,7 @@ export function ViolationDrawer({ v, live, onClose, startInEdit = false }: { v: 
                     .filter((h) => !/^Captured|^Received/.test(h.action))
                     .map((h, i) => (
                       <li key={i}>
-                        <span className="c-tl-dot c-tl-accent">{/Void/.test(h.action) ? <Ban size={12} /> : /Edit/.test(h.action) ? <Pencil size={12} /> : /mistake|Correction/i.test(h.action) ? <Flag size={12} /> : <Gavel size={12} />}</span>
+                        <span className="c-tl-dot c-tl-accent">{/notice/i.test(h.action) ? <Printer size={12} /> : /Void/.test(h.action) ? <Ban size={12} /> : /Edit/.test(h.action) ? <Pencil size={12} /> : /mistake|Correction/i.test(h.action) ? <Flag size={12} /> : <Gavel size={12} />}</span>
                         <div>
                           <b>{h.action.replace('Status: ', 'Status ')}</b>
                           <div className="faint">

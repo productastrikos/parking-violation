@@ -79,6 +79,8 @@ switches to demo automatically; *Settings → GPS source → Real GPS* uses the 
 | Where is the "AI"? | Forecast per area and hour, hotspots week on week, repeat-offender escalation (also on the phone, offline), duplicate and anomaly detection, guard deployment advice, and a ranked advisory that explains every item. Rules-based and explainable by default; a language model, if configured, words the brief and checks plates. It never changes a record — a supervisor decides. |
 | Is the location real? | In this demo the phones use a labelled DEMO position in Abu Dhabi. In the field: one switch to real GPS. |
 | Can the guard print the fine on the spot? | Yes, **Print penalty notice** on any record (it also opens by itself after Save). It's a standard municipal-style notice: authority, notice no., vehicle, offence code, place and time, fine in AED, pay-by date, officer, QR code, terms, signature line. Reprints say DUPLICATE COPY. It works offline. Set it up in **Settings → Fine printer**. |
+| Does the control room see what was printed? | Yes. Every print is reported to the server, including prints made offline (they upload after the record). On the **Dashboard**, the **Notices issued today** tile shows the count, the AED total and the reprints. In **Violations** you can filter printed / not printed / printed more than once, and the record drawer shows the amount, the pay-by date and **every print**: original, duplicates and office copies, with who printed it, when, on which phone and on which printer. **View notice** re-draws exactly what the driver got. **Office copy** prints it from the dashboard and logs that print too. The first print moves the record to **Fine issued**. **Field Team** shows notices per guard. The CSV export includes them. |
+| Who can change the fines? | An **admin on the dashboard** (Violations → **Fine schedule**) and a **supervisor in the app** (sign in as `supervisor`, then **Settings → Fine schedule**). A reason is required, and every change is logged with name, role and time. Phones get the new amounts at once, or on their next connection if offline. A notice already printed keeps its amount. Guards can see the schedule but cannot change it. |
 | Printer on iPhone? | iPhone Safari gives web apps no Bluetooth (Apple's rule). Options: **Printer app via Share** sends the notice image to the printer maker's iOS app; **AirPrint** works for AirPrint printers; or open the app in the free **Bluefy** browser for direct Bluetooth. Android Chrome pairs the printer directly. |
 | iPhone? | Same app from the same link via Safari → Add to Home Screen. Uploads happen while the app is open (iPhone has no background sync; Android behaves the same here). |
 
@@ -105,7 +107,8 @@ switches to demo automatically; *Settings → GPS source → Real GPS* uses the 
 
 Paper 58 mm (384 dots) or 80 mm (576 dots). The notice prints as one image (ESC/POS raster), so it looks the
 same on every brand. You can edit the header (issuing authority, section), days to pay and the payment/appeal
-terms. **Fine amounts and offence codes are sample values** (`shared/catalog.js`).
+terms. **The starting fine amounts are sample values.** Change them under **Fine schedule** (admin on the dashboard,
+supervisor in the app). Offence codes come from `shared/catalog.js`.
 
 ## Run it on a laptop
 

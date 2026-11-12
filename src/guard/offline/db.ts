@@ -14,6 +14,18 @@
  */
 import { openDB, type IDBPDatabase } from 'idb';
 import type { Plate, Gps, Severity } from '../../lib/api';
+import type { Notice } from '../../lib/notice';
+
+/** One print, as the server's accountability log records it. */
+export interface NoticePrintPayload {
+  at: number;
+  copy: 'original' | 'duplicate';
+  method: string;
+  printer?: string;
+  deviceId: string;
+  deviceLabel: string;
+  notice: Notice;
+}
 
 export type SyncState = 'pending' | 'syncing' | 'synced' | 'rejected' | 'auth';
 
@@ -46,15 +58,20 @@ export interface LocalRecord {
   /** Penalty notice printed on this phone (a reprint says DUPLICATE COPY). Local only. */
   printedAt?: number;
   printCount?: number;
+  /** The first (original) notice — reprints repeat its numbers and dates. */
+  firstNotice?: Notice;
 }
 
-/** A change to a synced record, queued like a record so it works offline. */
+/** A change to a record, queued like a record so it works offline:
+ *  'correction' — the guard reports a synced record as a mistake;
+ *  'notice'     — a penalty notice was printed (sent after the record itself uploads). */
 export interface Op {
   id: string; // op id = idempotency key on the server
-  kind: 'correction';
+  kind: 'correction' | 'notice';
   violationId: string;
   guardId: string;
   reason: string;
+  notice?: NoticePrintPayload;
   createdAt: number;
   state: 'pending' | 'done' | 'failed';
   lastError?: string;
@@ -101,7 +118,7 @@ export async function queueOp(op: Op) {
   const tx = d.transaction(['ops', 'records'], 'readwrite');
   await tx.objectStore('ops').put(op);
   const rec = (await tx.objectStore('records').get(op.violationId)) as LocalRecord | undefined;
-  if (rec) await tx.objectStore('records').put({ ...rec, correctionQueued: { reason: op.reason, at: op.createdAt } });
+  if (rec && op.kind === 'correction') await tx.objectStore('records').put({ ...rec, correctionQueued: { reason: op.reason, at: op.createdAt } });
   await tx.done;
 }
 export async function pendingOps(): Promise<Op[]> {

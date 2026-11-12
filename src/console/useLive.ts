@@ -10,6 +10,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
+import type { Notice } from '../lib/notice';
+import { setFines, type FineSchedule } from '../lib/fines';
 import { request, SOCKET_URL, type Device, type IntelPack, type Stats, type TeamRow, type Violation } from '../lib/api';
 
 export interface EditChanges {
@@ -40,6 +42,10 @@ export interface Live {
   restore: (id: string) => Promise<void>;
   dismissCorrection: (id: string, note: string) => Promise<void>;
   plateCheck: (id: string) => Promise<void>;
+  /** Log a print made from the dashboard (office copy, or the original if none was printed in the field). */
+  logNoticePrint: (id: string, body: { notice: Notice; method: string }) => Promise<Violation>;
+  saveFines: (changes: Record<string, number | null>, reason: string) => Promise<void>;
+  reloadFines: () => Promise<void>;
 }
 
 export function useLive(token: string, onAuthLost: () => void): Live {
@@ -101,9 +107,12 @@ export function useLive(token: string, onAuthLost: () => void): Live {
 
   const upsert = useCallback((v: Violation) => setViolations((list) => (list.some((x) => x.id === v.id) ? list.map((x) => (x.id === v.id ? v : x)) : [v, ...list])), []);
 
+  const reloadFines = useCallback(async () => setFines(await request<FineSchedule>('/api/fines', { token })), [token]);
+
   useEffect(() => {
     void load();
     void refreshIntel();
+    void reloadFines().catch(() => {});
     const it = window.setInterval(() => void refreshIntel(), 60_000);
     const s = io(SOCKET_URL, { auth: { token, surface: 'console' }, reconnectionDelayMax: 5000 });
     s.on('connect', () => {
@@ -143,6 +152,7 @@ export function useLive(token: string, onAuthLost: () => void): Live {
     });
     s.on('stats', (p: { stats: Stats }) => setStats(p.stats));
     s.on('team:changed', () => void reloadTeam().catch(() => {}));
+    s.on('fines:changed', (p: { fines: FineSchedule }) => setFines(p.fines));
     return () => {
       clearInterval(it);
       s.disconnect();
@@ -196,5 +206,8 @@ export function useLive(token: string, onAuthLost: () => void): Live {
     restore: async (id) => void (await post(`/api/violations/${id}/restore`)),
     dismissCorrection: async (id, note) => void (await post(`/api/violations/${id}/correction/dismiss`, { note })),
     plateCheck: async (id) => void (await post(`/api/ai/plate-check/${id}`)),
+    saveFines: async (changes, reason) => setFines(await request<FineSchedule>('/api/fines', { method: 'PUT', token, body: JSON.stringify({ changes, reason }) })),
+    reloadFines,
+    logNoticePrint: (id, body) => post(`/api/violations/${id}/notice`, { ...body, at: Date.now() }),
   };
 }

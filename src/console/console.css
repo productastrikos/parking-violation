@@ -1621,3 +1621,150 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── penalty notices & fine schedule ───────────────────────────────────── */
+.c-kpis.c-kpis-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (max-width: 1280px) {
+  .c-kpis.c-kpis-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1100px) {
+  .c-kpis.c-kpis-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.c-flag.is-print {
+  width: auto;
+  min-width: 22px;
+  padding: 0 4px;
+  grid-auto-flow: column;
+  gap: 2px;
+  color: var(--app-success);
+  background: var(--app-success-bg);
+}
+.c-flag-n {
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.c-notice {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-raised);
+}
+.c-notice.is-empty {
+  display: grid;
+  gap: 10px;
+}
+.c-notice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.c-notice-amount {
+  font-family: 'Lexend Deca', sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+}
+.c-notice-meta {
+  margin-top: 4px;
+  font-size: 13px;
+  display: grid;
+  gap: 2px;
+}
+.c-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.c-print-log {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--app-border);
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+}
+.c-print-log li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.c-print-ico {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--app-text-faint);
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+}
+.c-print-ico.is-orig {
+  color: var(--app-success);
+  border-color: var(--app-success);
+}
+.c-notice-view {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.c-notice-paper {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  max-height: 68vh;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--app-surface-raised);
+  border: 1px solid var(--app-border);
+}
+.c-notice-paper img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+}
+.c-notice-side {
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+}
+.c-notice-side p {
+  margin: 0;
+}
+@media (max-width: 720px) {
+  .c-notice-view {
+    grid-template-columns: 1fr;
+  }
+}
+.c-fines td {
+  vertical-align: middle;
+}
+.c-fine-input {
+  min-height: 34px;
+  height: 34px;
+  padding: 4px 10px;
+  width: 130px;
+  text-align: right;
+  margin-left: auto;
+}
+.c-fines-save {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.c-fines-save .input {
+  flex: 1 1 260px;
+}

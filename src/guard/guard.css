@@ -1549,26 +1549,19 @@
   color: var(--app-text-faint);
 }
 
-/* System print / AirPrint: only the notice goes to paper. */
-#pp-print-root {
-  display: none;
+.pn-fine.is-changed {
+  background: var(--app-accent-bg);
 }
-@media print {
-  @page {
-    margin: 3mm;
-  }
-  body > *:not(#pp-print-root) {
-    display: none !important;
-  }
-  html,
-  body {
-    background: #fff !important;
-  }
-  #pp-print-root {
-    display: block !important;
-  }
-  #pp-print-root img {
-    display: block;
-    margin: 0 auto;
-  }
+.pn-fine-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--app-text-faint);
+}
+.pn-fine-input .input {
+  width: 96px;
+  min-height: 38px;
+  padding: 6px 10px;
+  text-align: right;
 }

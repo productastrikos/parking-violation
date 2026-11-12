@@ -8,6 +8,8 @@
  * production `.env.production` points at the API subdomain.
  */
 import * as catalog from '../../shared/catalog.js';
+import type { Notice } from './notice';
+import type { FineSchedule } from './fines';
 import { buildLabel } from './version';
 
 const sameOrigin = () => (typeof window === 'undefined' ? '' : window.location.origin);
@@ -81,6 +83,24 @@ export interface Violation {
   };
   updatedAt?: number;
   seeded?: boolean;
+  /** Every penalty-notice print, oldest first. notices[0] is the original that issued the fine. */
+  notices?: NoticePrint[];
+}
+
+export interface NoticePrint {
+  id: string;
+  no: number;
+  at: number;
+  receivedAt: number;
+  copy: 'original' | 'duplicate' | 'office';
+  surface: 'app' | 'dashboard';
+  byId: string;
+  by: string;
+  deviceId?: string;
+  deviceLabel?: string;
+  method: string;
+  printer?: string;
+  notice: Notice;
 }
 
 /* ── intelligence (shared/intel.js) ────────────────────────────────────── */
@@ -168,6 +188,7 @@ export interface FieldPack {
   hotspots: { areaId: string; label: string; count7: number; trendPct: number; peakWindow: string; topTypes: { id: string; label: string; n: number }[] }[];
   watchlist: Offender[];
   mine: { id: string; status: Status; voided: boolean; voidReason?: string; correction: Violation['correction']; edited: boolean; plate: Plate; type: string }[];
+  fines?: FineSchedule;
 }
 
 export interface Device {
@@ -186,6 +207,10 @@ export interface Device {
 }
 
 export interface Stats {
+  noticesToday?: number;
+  finesTodayAed?: number;
+  noticesTotal?: number;
+  reprintsToday?: number;
   total: number;
   today: number;
   todayOffline: number;
@@ -204,6 +229,9 @@ export interface TeamRow extends User {
   today: number;
   total: number;
   offlineCaptured: number;
+  noticesToday?: number;
+  notices?: number;
+  reprints?: number;
   lastRecord: number | null;
   online: boolean;
   lastSeen: number | null;
