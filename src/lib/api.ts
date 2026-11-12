@@ -216,6 +216,10 @@ export interface ViolationType {
   short: string;
   severity: Severity;
   icon: string;
+  /** Offence code printed on the notice. */
+  code?: string;
+  /** Fine in AED (sample schedule); null = assessed later. */
+  fine?: number | null;
 }
 export interface Area {
   id: string;

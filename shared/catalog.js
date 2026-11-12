@@ -20,20 +20,25 @@
  * in an underground car park where there is no GPS signal.
  */
 
+/*
+ * FINES. `code` and `fine` (AED) are printed on the penalty notice the guard
+ * hands over. SAMPLE VALUES for the POC — the authority's own fee schedule
+ * replaces them. `fine: null` = amount assessed later by the authority.
+ */
 export const VIOLATION_TYPES = [
-  { id: 'no-parking', label: 'No-parking zone', short: 'No parking', severity: 'medium', icon: 'ban' },
-  { id: 'double-parking', label: 'Double parking', short: 'Double parked', severity: 'medium', icon: 'copy' },
-  { id: 'disabled-bay', label: 'People of Determination bay, no permit', short: 'PoD bay', severity: 'high', icon: 'accessibility' },
-  { id: 'fire-lane', label: 'Fire lane or hydrant blocked', short: 'Fire lane', severity: 'high', icon: 'flame' },
-  { id: 'blocking', label: 'Blocking a driveway, gate or vehicle', short: 'Blocking', severity: 'medium', icon: 'octagon' },
-  { id: 'footpath', label: 'On footpath or pedestrian crossing', short: 'Footpath', severity: 'medium', icon: 'footprints' },
-  { id: 'bus-stop', label: 'At a bus stop or taxi stand', short: 'Bus stop', severity: 'medium', icon: 'bus' },
-  { id: 'unpaid', label: 'Parking fee unpaid or ticket expired', short: 'Unpaid', severity: 'low', icon: 'receipt' },
-  { id: 'outside-bay', label: 'Across two bays or outside markings', short: 'Outside bay', severity: 'low', icon: 'square-dashed' },
-  { id: 'loading-zone', label: 'Misusing a loading zone', short: 'Loading zone', severity: 'low', icon: 'truck' },
-  { id: 'wrong-way', label: 'Wrong way or against traffic flow', short: 'Wrong way', severity: 'high', icon: 'arrow-left-right' },
-  { id: 'abandoned', label: 'Abandoned or neglected vehicle', short: 'Abandoned', severity: 'low', icon: 'car' },
-  { id: 'other', label: 'Other (describe in notes)', short: 'Other', severity: 'medium', icon: 'more' },
+  { id: 'no-parking', label: 'No-parking zone', short: 'No parking', severity: 'medium', icon: 'ban', code: 'P-101', fine: 200 },
+  { id: 'double-parking', label: 'Double parking', short: 'Double parked', severity: 'medium', icon: 'copy', code: 'P-102', fine: 500 },
+  { id: 'disabled-bay', label: 'People of Determination bay, no permit', short: 'PoD bay', severity: 'high', icon: 'accessibility', code: 'P-103', fine: 1000 },
+  { id: 'fire-lane', label: 'Fire lane or hydrant blocked', short: 'Fire lane', severity: 'high', icon: 'flame', code: 'P-104', fine: 1000 },
+  { id: 'blocking', label: 'Blocking a driveway, gate or vehicle', short: 'Blocking', severity: 'medium', icon: 'octagon', code: 'P-105', fine: 500 },
+  { id: 'footpath', label: 'On footpath or pedestrian crossing', short: 'Footpath', severity: 'medium', icon: 'footprints', code: 'P-106', fine: 400 },
+  { id: 'bus-stop', label: 'At a bus stop or taxi stand', short: 'Bus stop', severity: 'medium', icon: 'bus', code: 'P-107', fine: 500 },
+  { id: 'unpaid', label: 'Parking fee unpaid or ticket expired', short: 'Unpaid', severity: 'low', icon: 'receipt', code: 'P-108', fine: 200 },
+  { id: 'outside-bay', label: 'Across two bays or outside markings', short: 'Outside bay', severity: 'low', icon: 'square-dashed', code: 'P-109', fine: 200 },
+  { id: 'loading-zone', label: 'Misusing a loading zone', short: 'Loading zone', severity: 'low', icon: 'truck', code: 'P-110', fine: 300 },
+  { id: 'wrong-way', label: 'Wrong way or against traffic flow', short: 'Wrong way', severity: 'high', icon: 'arrow-left-right', code: 'P-111', fine: 600 },
+  { id: 'abandoned', label: 'Abandoned or neglected vehicle', short: 'Abandoned', severity: 'low', icon: 'car', code: 'P-112', fine: 1000 },
+  { id: 'other', label: 'Other (describe in notes)', short: 'Other', severity: 'medium', icon: 'more', code: 'P-199', fine: null },
 ];
 
 export const SEVERITIES = [

@@ -48,7 +48,7 @@ const shotOf = (file: Blob, at = Date.now(), stamped = false): Shot => ({ file, 
 
 const usePack = () => useSyncExternalStore(subscribePack, getFieldPack);
 
-export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user: User; editing?: LocalRecord | null; onCancel: () => void; onSaved: (online: boolean | null, edited: boolean) => void }) {
+export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user: User; editing?: LocalRecord | null; onCancel: () => void; onSaved: (online: boolean | null, edited: boolean, id?: string) => void }) {
   const [vehicle, setVehicle] = useState<Shot | null>(null);
   const [plateShot, setPlateShot] = useState<Shot | null>(null);
   const [emirate, setEmirate] = useState(editing?.plate.emirate ?? 'AD');
@@ -201,6 +201,7 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
     if (!areaId && gps.state !== 'fixed') return setError('Choose the area — there is no GPS fix');
     setSaving(true);
     try {
+      let savedId = editing?.id;
       const dev = await deviceInfo();
       const label = await deviceLabel();
       const fix = gps.state === 'fixed' ? gps.fix : editing?.location.gps ?? null;
@@ -248,10 +249,11 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
           attempts: 0,
         };
         await saveRecord(rec, photos);
+        savedId = rec.id;
         await clearDraft(user.id);
       }
       navigator.vibrate?.([30, 40, 30]);
-      onSaved(online, Boolean(editing));
+      onSaved(online, Boolean(editing), savedId);
     } catch (e) {
       setError(`Could not save: ${(e as Error).message}`);
       setSaving(false);

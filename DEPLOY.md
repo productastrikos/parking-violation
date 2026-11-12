@@ -123,7 +123,13 @@ still holds the old dashboard. Do **Ctrl+Shift+R** (Mac: Cmd+Shift+R) once on th
 tab of the site and reopen. From then on updates arrive automatically. Phones: open the app, tap
 **"A new version is ready"** if shown (or close and reopen the app twice).
 
-## 6. Reset demo data
+## 6. Fine printer
+
+Nothing to set up on the server: printing happens on the phone. Direct Bluetooth printing needs the HTTPS
+URL, which it already has. Guards configure the printer per phone under **Settings → Fine printer**
+(see DEMO.md → Fine printer).
+
+## 7. Reset demo data
 
 ```bash
 pm2 stop parking_be_4357 && npm run reset && pm2 start parking_be_4357

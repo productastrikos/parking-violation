@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   AlertTriangle, Camera, CheckCircle2, ChevronRight, Eye, EyeOff, Home, List, Loader2, Lock, LogOut, PlusSquare, RefreshCw, Settings, Share, Smartphone, Trash2,
-  User as UserIcon, WifiOff, X, RotateCcw, UploadCloud, Hourglass, Info, Pencil, Flag, Sparkles, TrendingUp, TrendingDown, Siren, Search, FlaskConical, Crosshair, Moon, Sun, Ban, Gavel, Clock,
+  User as UserIcon, WifiOff, X, RotateCcw, UploadCloud, Hourglass, Info, Pencil, Flag, Sparkles, TrendingUp, TrendingDown, Siren, Search, FlaskConical, Crosshair, Moon, Sun, Ban, Gavel, Clock, Printer,
 } from 'lucide-react';
 import { registerSW } from 'virtual:pwa-register';
 import { watchVersion } from '../lib/version';
@@ -33,6 +33,8 @@ import { useGpsMode, setGpsMode, wasAutoSwitched } from './offline/location';
 import { warmUpOcr } from './offline/plateOcr';
 import CaptureFlow from './CaptureFlow';
 import { Confirm, AskReason } from './Sheet';
+import { PrintSheet, PrinterSettingsSection } from './PrintNotice';
+import { getPrinter } from './print/printer';
 import './guard.css';
 
 type Tab = 'home' | 'records' | 'patrol' | 'settings';
@@ -302,6 +304,7 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
   const [capturing, setCapturing] = useState<{ editing?: LocalRecord | null } | null>(null);
   useEffect(() => setCaptureOpen(Boolean(capturing)), [capturing]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [printId, setPrintId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
   const recs = useRecords();
   const sync = useSync();
@@ -324,9 +327,11 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
     }
   }, [sync.lastSyncAt, sync.lastSyncCount, seenSync]);
 
-  const onSaved = useCallback((online: boolean | null, edited: boolean) => {
+  const onSaved = useCallback((online: boolean | null, edited: boolean, id?: string) => {
     setCapturing(null);
     setTab('home');
+    // Hand the fine over on the spot: the print screen opens for the new violation.
+    if (id && !edited && getPrinter().offerAfterSave) setPrintId(id);
     setToast(edited ? { text: 'Changes saved — will upload with the record', tone: 'ok' } : online ? { text: 'Saved — uploading now', tone: 'ok' } : { text: 'Saved on this phone — will upload when online', tone: 'warn' });
     recordsChanged();
     void syncNow();
@@ -335,6 +340,7 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
   if (capturing) return <CaptureFlow user={session.user} editing={capturing.editing} onCancel={() => setCapturing(null)} onSaved={onSaved} />;
 
   const open = openId ? recs.find((r) => r.id === openId) ?? null : null;
+  const printing = printId ? recs.find((r) => r.id === printId) ?? null : null;
 
   return (
     <div className="g-shell m-shell">
@@ -390,6 +396,24 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
             setCapturing({ editing: open });
           }}
           onToast={setToast}
+          onPrint={() => {
+            setOpenId(null);
+            setPrintId(open.id);
+          }}
+        />
+      )}
+      {printing && (
+        <PrintSheet
+          rec={printing}
+          onClose={() => setPrintId(null)}
+          onSettings={() => {
+            setPrintId(null);
+            setTab('settings');
+          }}
+          onDone={(text) => {
+            setPrintId(null);
+            setToast({ text, tone: 'ok' });
+          }}
         />
       )}
       {toast && (
@@ -671,7 +695,7 @@ function RecordList({ recs, onOpen }: { recs: LocalRecord[]; onOpen: (r: LocalRe
   );
 }
 
-function RecordSheet({ rec, onClose, onEdit, onToast }: { rec: LocalRecord; onClose: () => void; onEdit: () => void; onToast: (t: { text: string; tone: 'ok' | 'warn' }) => void }) {
+function RecordSheet({ rec, onClose, onEdit, onToast, onPrint }: { rec: LocalRecord; onClose: () => void; onEdit: () => void; onToast: (t: { text: string; tone: 'ok' | 'warn' }) => void; onPrint: () => void }) {
   const [photos, setPhotos] = useState<{ kind: string; url: string }[]>([]);
   const [ask, setAsk] = useState<'delete' | 'mistake' | null>(null);
   useEffect(() => {
@@ -782,11 +806,24 @@ function RecordSheet({ rec, onClose, onEdit, onToast }: { rec: LocalRecord; onCl
                 <dd>{rec.notes}</dd>
               </>
             )}
+            {rec.printCount ? (
+              <>
+                <dt>Notice</dt>
+                <dd>
+                  Printed {rec.printCount}× · last {fmtDateTime(rec.printedAt)}
+                </dd>
+              </>
+            ) : null}
             <dt>Guard</dt>
             <dd>
               {rec.guardName} · {rec.deviceLabel}
             </dd>
           </dl>
+          {!rec.server?.voided && (
+            <button className="btn btn-primary btn-lg btn-block n-primary" onClick={onPrint}>
+              <Printer size={18} /> {rec.printCount ? 'Reprint penalty notice' : 'Print penalty notice'}
+            </button>
+          )}
           <div className="g-sheet-actions">
             {canEdit && (
               <button className="btn btn-lg" onClick={onEdit}>
@@ -1044,6 +1081,8 @@ function SettingsTab({ session, onSignOut }: { session: Session; onSignOut: () =
           </div>
         )}
       </section>
+
+      <PrinterSettingsSection officerName={session.user.name} officerId={session.user.id} />
 
       <div className="n-group-label">This device</div>
       <section className="n-card n-group">

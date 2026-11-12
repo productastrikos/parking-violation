@@ -78,6 +78,8 @@ switches to demo automatically; *Settings → GPS source → Real GPS* uses the 
 | How does the plate reading work? Internet? | On the phone, offline: it finds the plate in the frame, cleans it up and reads it several ways, then votes. The live scanner locks when frames agree. The guard always confirms. With a model configured, the server double-checks each uploaded plate photo too. |
 | Where is the "AI"? | Forecast per area and hour, hotspots week on week, repeat-offender escalation (also on the phone, offline), duplicate and anomaly detection, guard deployment advice, and a ranked advisory that explains every item. Rules-based and explainable by default; a language model, if configured, words the brief and checks plates. It never changes a record — a supervisor decides. |
 | Is the location real? | In this demo the phones use a labelled DEMO position in Abu Dhabi. In the field: one switch to real GPS. |
+| Can the guard print the fine on the spot? | Yes, **Print penalty notice** on any record (it also opens by itself after Save). It's a standard municipal-style notice: authority, notice no., vehicle, offence code, place and time, fine in AED, pay-by date, officer, QR code, terms, signature line. Reprints say DUPLICATE COPY. It works offline. Set it up in **Settings → Fine printer**. |
+| Printer on iPhone? | iPhone Safari gives web apps no Bluetooth (Apple's rule). Options: **Printer app via Share** sends the notice image to the printer maker's iOS app; **AirPrint** works for AirPrint printers; or open the app in the free **Bluefy** browser for direct Bluetooth. Android Chrome pairs the printer directly. |
 | iPhone? | Same app from the same link via Safari → Add to Home Screen. Uploads happen while the app is open (iPhone has no background sync; Android behaves the same here). |
 
 ## Honest limits (POC)
@@ -90,6 +92,20 @@ switches to demo automatically; *Settings → GPS source → Real GPS* uses the 
 * Forecasts come from ~2 weeks of synthetic sample data; on real data they need a few weeks to settle.
 * The AI check of plates and the AI-written brief need `LLM_PROVIDER` / `LLM_API_KEY` on the server;
   without them the advisory is fully rules-based (and says so).
+
+## Fine printer (Settings → Fine printer)
+
+| Phone | Printer | Choose |
+|---|---|---|
+| Android (Chrome) | BLE ESC/POS thermal printer (most 58/80 mm mini printers) | **Bluetooth printer (direct)** → Pair → Test print |
+| Android | Classic-Bluetooth / USB / Wi-Fi printer | **RawBT print service** (free Play Store app; select the printer in RawBT once) |
+| iPhone | Any printer with an iOS app | **Printer app via Share** → pick the maker's app |
+| iPhone | AirPrint printer | **AirPrint** |
+| iPhone | BLE ESC/POS printer, direct | Open the app in the **Bluefy** browser → Bluetooth printer (direct) |
+
+Paper 58 mm (384 dots) or 80 mm (576 dots). The notice prints as one image (ESC/POS raster), so it looks the
+same on every brand. You can edit the header (issuing authority, section), days to pay and the payment/appeal
+terms. **Fine amounts and offence codes are sample values** (`shared/catalog.js`).
 
 ## Run it on a laptop
 

@@ -43,6 +43,9 @@ export interface LocalRecord {
   server?: { status: string; voided: boolean; voidReason?: string; edited: boolean; correction?: { state: string; reason: string } | null; plate?: Plate; type?: string; at: number };
   /** A mistake report waiting in the outbox (before the server has it). */
   correctionQueued?: { reason: string; at: number } | null;
+  /** Penalty notice printed on this phone (a reprint says DUPLICATE COPY). Local only. */
+  printedAt?: number;
+  printCount?: number;
 }
 
 /** A change to a synced record, queued like a record so it works offline. */
