@@ -20,6 +20,7 @@ import {
   User as UserIcon, WifiOff, X, RotateCcw, UploadCloud, Hourglass, Info, Pencil, Flag, Sparkles, TrendingUp, TrendingDown, Siren, Search, FlaskConical, Crosshair, Moon, Sun, Ban, Gavel, Clock,
 } from 'lucide-react';
 import { registerSW } from 'virtual:pwa-register';
+import { watchVersion } from '../lib/version';
 import { request, ApiError, APP_VERSION, typeOf, areaOf, fmtDateTime, fmtTime, ago, statusLabel, type User } from '../lib/api';
 import { PlateChip, TypeIcon, useNow, useTheme, applyTheme } from '../lib/ui';
 import { allRecords, deleteUnsynced, photosFor, pruneSynced, queueOp, type LocalRecord } from './offline/db';
@@ -66,13 +67,53 @@ function setSw(p: Partial<typeof swState>) {
   swState = { ...swState, ...p };
   swListeners.forEach((l) => l());
 }
+/*
+ * Updates: a new version is looked for on open, every 10 minutes, whenever the
+ * app comes back to the foreground, and when /version.json says the server has
+ * a new build. It installs in the background and is APPLIED AUTOMATICALLY while
+ * no violation form is open (a form in progress is never reloaded; it applies
+ * when the guard leaves the form). The banner remains as a manual fallback.
+ */
+let captureOpen = false;
+let swReg: ServiceWorkerRegistration | null = null;
+let reloading = false;
+/** Activate the waiting version and reload onto it. The plugin's own reload hook does not always
+ *  fire (seen in Chrome: new worker active, page still on the old build), so reload on the
+ *  browser's controllerchange, with a timed fallback. */
+function applyUpdateNow() {
+  if (reloading) return;
+  reloading = true;
+  navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+  void updateSW?.(true);
+  window.setTimeout(() => window.location.reload(), 4000);
+}
+function applyUpdateIfIdle() {
+  if (swState.needRefresh && !captureOpen) applyUpdateNow();
+}
+export function setCaptureOpen(open: boolean) {
+  captureOpen = open;
+  if (!open) applyUpdateIfIdle();
+}
+const checkForUpdate = () => {
+  if (navigator.onLine) void swReg?.update().catch(() => {});
+};
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   updateSW = registerSW({
     immediate: true,
-    onNeedRefresh: () => setSw({ needRefresh: true }),
+    onNeedRefresh: () => {
+      setSw({ needRefresh: true });
+      applyUpdateIfIdle();
+    },
     onOfflineReady: () => setSw({ offlineReady: true }),
+    onRegisteredSW: (_url, reg) => {
+      if (!reg) return;
+      swReg = reg;
+      window.setInterval(checkForUpdate, 10 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && checkForUpdate());
+    },
   });
   if (navigator.serviceWorker.controller) swState.offlineReady = true;
+  watchVersion(checkForUpdate, 5 * 60 * 1000);
 }
 const useSw = () =>
   useSyncExternalStore(
@@ -259,6 +300,7 @@ function ConnBadge({ compact = false }: { compact?: boolean }) {
 function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void }) {
   const [tab, setTab] = useState<Tab>('home');
   const [capturing, setCapturing] = useState<{ editing?: LocalRecord | null } | null>(null);
+  useEffect(() => setCaptureOpen(Boolean(capturing)), [capturing]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
   const recs = useRecords();
@@ -315,7 +357,7 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
       </header>
 
       {sw.needRefresh && (
-        <button className="g-banner g-banner-info" onClick={() => void updateSW?.(true)}>
+        <button className="g-banner g-banner-info" onClick={applyUpdateNow}>
           <RefreshCw size={16} /> A new version is ready — tap to update
         </button>
       )}

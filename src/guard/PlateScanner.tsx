@@ -4,9 +4,10 @@
  * The camera stream (getUserMedia, rear camera) fills the screen with a
  * plate-shaped guide box. About twice a second the box region of the current
  * frame is cut out, cleaned up and read on the phone (plateOcr.readFrame).
- * Readings are VOTED across frames: the plate locks when two frames agree with
- * reasonable confidence (or one is very sure), the phone vibrates, and the
- * frame itself becomes the plate photo — evidence of what was read.
+ * Readings are VOTED across frames: a confirmed frame read counts 1, an unsure
+ * one ½, and the plate locks at 2 from at least two frames — never on a single
+ * frame, however sure it looks. The phone vibrates and the frame itself becomes
+ * the plate photo — evidence of what was read.
  *
  * Works offline (camera and reader are both on the phone), on Android Chrome
  * and iPhone Safari / Home Screen app (iOS 14.3+). If the camera cannot be
@@ -23,7 +24,7 @@ export interface ScanResult extends PlateRead {
 }
 
 const GUIDE_RATIO = 4.2; // UAE plates are long and low
-const LOCK_HITS = 2;
+const LOCK_WEIGHT = 2;
 
 export default function PlateScanner({ onResult, onClose, onFallback }: { onResult: (r: ScanResult) => void; onClose: () => void; onFallback: () => void }) {
   const video = useRef<HTMLVideoElement>(null);
@@ -36,7 +37,7 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
   const [locked, setLocked] = useState<ScanResult | null>(null);
   const [torch, setTorch] = useState<boolean | null>(null);
   const [shooting, setShooting] = useState(false);
-  const votes = useRef(new Map<string, { hits: number; conf: number; codes: Map<string, number>; emirate: string | null }>());
+  const votes = useRef(new Map<string, { hits: number; weight: number; reads: number; conf: number; codes: Map<string, number>; emirate: string | null }>());
   const busy = useRef(false);
 
   // Start the rear camera.
@@ -128,18 +129,20 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
         const crop = guideCrop();
         if (!crop) return;
         const r = await readFrame(crop);
-        if (!alive || !r?.number || r.number.length < 3) return;
-        const v = votes.current.get(r.number) ?? { hits: 0, conf: 0, codes: new Map(), emirate: null };
+        if (!alive || r.verdict === 'none' || r.number.length < 3) return;
+        const v = votes.current.get(r.number) ?? { hits: 0, weight: 0, reads: 0, conf: 0, codes: new Map(), emirate: null };
         v.hits += 1;
+        v.weight += r.verdict === 'read' ? 1 : 0.5;
+        if (r.verdict === 'read') v.reads += 1;
         v.conf += r.confidence;
         if (r.code) v.codes.set(r.code, (v.codes.get(r.code) ?? 0) + 1);
         v.emirate ||= r.emirate;
         votes.current.set(r.number, v);
         setSeen({ number: r.number, hits: v.hits });
         const avg = v.conf / v.hits;
-        if ((v.hits >= LOCK_HITS && avg >= 55) || (v.hits === 1 && r.confidence >= 88)) {
+        if (v.hits >= 2 && v.weight >= LOCK_WEIGHT) {
           const code = [...v.codes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
-          await lock({ number: r.number, code, emirate: v.emirate, raw: r.raw, confidence: Math.round(Math.min(99, avg + (v.hits - 1) * 5)) });
+          await lock({ number: r.number, code, emirate: v.emirate, raw: r.raw, confidence: Math.round(Math.min(99, avg + (v.hits - 1) * 3)), verdict: v.reads ? 'read' : 'unsure' });
         }
       } catch {
         /* a bad frame — the next one will do */
@@ -241,17 +244,17 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
             {locked.number ? (
               <>
                 <PlateChip plate={{ emirate: locked.emirate ?? 'AD', code: locked.code, number: locked.number, source: 'ocr' }} large />
-                <div className="ps-conf">{locked.confidence >= 50 ? `${locked.confidence}% sure — check it matches the plate` : `Low confidence (${locked.confidence}%) — check it carefully`}</div>
+                <div className="ps-conf">{locked.verdict === 'read' ? 'Check it matches the plate in front of you' : 'Not sure of this reading — compare every character with the plate, or try again'}</div>
               </>
             ) : (
-              <div className="ps-conf">No plate number found in that shot. Try again, closer and straight on — or use it and type the plate.</div>
+              <div className="ps-conf">No plate number found in that shot. Try again, closer and straight on — or use the photo and type the plate.</div>
             )}
             <div className="ps-result-actions">
               <button className="btn btn-lg" onClick={rescan}>
                 <RotateCcw size={18} /> Again
               </button>
               <button className="btn btn-primary btn-lg" onClick={() => onResult(locked)}>
-                <Check size={18} /> Use {locked.number ? 'plate' : 'photo'}
+                <Check size={18} /> {locked.number ? (locked.verdict === 'read' ? 'Use plate' : 'Yes, use it') : 'Use photo'}
               </button>
             </div>
           </div>

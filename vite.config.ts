@@ -25,9 +25,24 @@ const proxy = {
   '/socket.io': { target: BACKEND, changeOrigin: true, ws: true },
 };
 
+/**
+ * Build id: stamped into the bundle (__BUILD_ID__) and written to /version.json.
+ * The apps compare the two to notice a redeploy (src/lib/version.ts) and show
+ * the id, so "which version am I looking at?" always has an answer.
+ */
+const BUILD_ID = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+const versionFile = {
+  name: 'version-json',
+  generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD_ID }) });
+  },
+};
+
 export default defineConfig(({ mode }) => ({
+  define: { __BUILD_ID__: JSON.stringify(mode === 'development' ? 'dev' : BUILD_ID) },
   plugins: [
     react(),
+    versionFile,
     ...(mode === 'http' ? [] : [basicSsl()]),
     /**
      * The offline layer. The service worker precaches the whole app shell —
@@ -68,7 +83,14 @@ export default defineConfig(({ mode }) => ({
         // The plate reader's WASM core is ~4 MB per build; the default 2 MB cap would silently skip it.
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallback: '/index.html',
+        // ONLY the guard app (/app) opens from the offline cache. The dashboard (/, /violations,
+        // /advisory, /team) always loads index.html from the server, so a redeploy shows up on the
+        // next reload — a cached dashboard kept showing the old build for days.
+        navigateFallbackAllowlist: [/^\/app(\/|$)/i],
         navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/socket\.io\//],
+        // Workbox would otherwise answer "/" with the precached index.html (directory index),
+        // bypassing the allowlist above. No file has this name, so "/" goes to the network.
+        directoryIndex: '__network__',
         cleanupOutdatedCaches: true,
         clientsClaim: true,
       },

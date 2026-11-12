@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { Advisory, AdvisoryPriority } from '../lib/api';
+import type { Advisory, AdvisoryPriority, Forecast } from '../lib/api';
 
 export const PRIORITY: Record<AdvisoryPriority, { label: string; chip: string; tone: string }> = {
   critical: { label: 'Critical', chip: 'chip-danger', tone: 'danger' },
@@ -65,5 +65,35 @@ export function AdvisoryRow({ a, rank, onAct, defaultOpen = false }: { a: Adviso
         </div>
       )}
     </li>
+  );
+}
+
+/** Expected violations per hour for the next 24 h (bars), the next 3 h highlighted. Dashboard + AI Advisory. */
+export function ForecastChart({ fc }: { fc: Forecast }) {
+  const maxHour = Math.max(1, ...fc.hourly.map((h) => h.expected));
+  const peak = fc.hourly.reduce((b, h, i) => (h.expected > fc.hourly[b].expected ? i : b), 0);
+  return (
+    <svg className="c-chart" viewBox="0 0 480 150" role="img" aria-label={`Forecast: about ${fc.next24} violations in the next 24 hours`}>
+      {[0.25, 0.5, 0.75, 1].map((g) => (
+        <line key={g} x1="0" x2="480" y1={130 - g * 112} y2={130 - g * 112} className="c-chart-grid" />
+      ))}
+      {fc.hourly.map((h, i) => {
+        const bh = Math.max(1.5, (h.expected / maxHour) * 112);
+        return (
+          <g key={i}>
+            <rect x={i * 20 + 3} y={130 - bh} width="14" height={bh} rx="3" className={i < 3 ? 'c-chart-bar is-near' : i === peak ? 'c-chart-bar is-peak' : 'c-chart-bar'}>
+              <title>
+                {String(h.hour).padStart(2, '0')}:00 — ~{h.expected}
+              </title>
+            </rect>
+            {i % 3 === 0 && (
+              <text x={i * 20 + 10} y="146" className="c-chart-label" textAnchor="middle">
+                {String(h.hour).padStart(2, '0')}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
   );
 }

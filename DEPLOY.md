@@ -13,8 +13,8 @@ Add to the port registry: `| parking | 3357 | 4357 | live |`
 
 ```bash
 cd parking-violence
-npm install                      # also copies the plate-reader files into public/ocr (needs internet once)
-npm run build                    # uses .env.production → dist/ (includes sw.js = offline mode)
+npm install && npm run build              # also copies the plate-reader files into public/ocr (needs internet once)
+                   # uses .env.production → dist/ (includes sw.js = offline mode)
 
 # Frontend — static. serve reads dist/serve.json (no-cache on sw.js / index.html).
 pm2 start serve --name parking_3357 -- ./dist -s -p 3357
@@ -89,6 +89,7 @@ sudo nginx -t && sudo systemctl reload nginx
 curl -k https://parking.astrikos.xyz:8443/app                      # SPA HTML
 curl -k -I https://parking.astrikos.xyz:8443/sw.js                 # Cache-Control: no-cache
 curl -k https://parking-api.astrikos.xyz:8443/api/health           # {"ok":true,...}
+curl -k https://parking.astrikos.xyz:8443/version.json             # {"build":"<time of this build>"}
 ```
 
 Then on a phone: open `https://parking.astrikos.xyz:8443/app`, sign in as `guard1`, and check **Settings → Offline mode: Ready**.
@@ -101,9 +102,26 @@ service worker over a self-signed certificate** — so the offline demo on an iP
 
 ## 5. Updating
 
-`npm run build` and `pm2 restart parking_3357`. Phones pick up the new version on next open and show
-"A new version is ready — tap to update" (no automatic reload mid-form). Records waiting on a phone are
-not affected by an update.
+```bash
+git pull && npm install && npm run build && pm2 restart parking_3357    # + pm2 restart parking_be_4357 if server/ changed
+curl -k https://parking.astrikos.xyz:8443/version.json                   # shows the new build time
+```
+
+Every build is stamped with its build time (`/version.json`, served no-cache). That time is shown in the
+dashboard sidebar ("Powered by Astrikos · build …"), in the guard app under **Settings → Version**, and per
+phone on the **Field Team** page — so "is it on the new version?" has a visible answer.
+
+How the new version reaches people — no hard refresh needed:
+
+| Where | What happens |
+|---|---|
+| **Dashboard** (`/`, `/violations`, …) | Always loads fresh from the server (the offline cache only serves `/app`). An open tab notices the new build within ~3 min or on focus: a hidden tab reloads itself, a visible one shows **"A new version … Reload now"**. |
+| **Guard app** (`/app`) | Checks on open, on coming to the foreground, every 10 min and via `/version.json`. The new version installs in the background and **applies by itself** (≈1 s reload) whenever no violation form is open. A form in progress is never reloaded — it updates when the guard leaves the form. Unsent records are not affected. |
+
+**One-time, only for browsers that opened the site before this fix (12 Nov 2026):** their old offline cache
+still holds the old dashboard. Do **Ctrl+Shift+R** (Mac: Cmd+Shift+R) once on the dashboard — or close every
+tab of the site and reopen. From then on updates arrive automatically. Phones: open the app, tap
+**"A new version is ready"** if shown (or close and reopen the app twice).
 
 ## 6. Reset demo data
 

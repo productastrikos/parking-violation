@@ -2,6 +2,9 @@
  * Dashboard — the overview.
  *
  *   AI advisory panel (theme §10.2): summary + the top four priorities.
+ *   AI predictions row: the 24-hour forecast, the areas predicted busiest in
+ *   the next 3 hours against the guards there, and "AI at work" — each AI use
+ *   case with its live count, one click from the evidence.
  *   KPIs — each filters the live feed in place.
  *   Live feed: a record captured on a phone with no signal appears here the
  *   moment the phone reconnects, highlighted, with "Captured offline".
@@ -9,13 +12,13 @@
  *   Devices: which phone, which guard, online/offline, last upload.
  */
 import { useMemo, useState } from 'react';
-import { CheckCircle2, ChevronRight, Smartphone, Sparkles, WifiOff, Flag } from 'lucide-react';
+import { BrainCircuit, CheckCircle2, ChevronRight, Copy, Flame, MapPinned, Repeat, ScanLine, ShieldCheck, Smartphone, Sparkles, TrendingUp, WifiOff, Flag } from 'lucide-react';
 import { areaOf, ago, duration, fmtDate, fmtTime } from '../lib/api';
 import { PlateChip, useNow } from '../lib/ui';
 import type { Live } from './useLive';
 import type { Nav } from './ConsoleApp';
 import { Kpi, MapView, StatusChip, TypeCell } from './parts';
-import { PRIORITY } from './advisory';
+import { ForecastChart, PRIORITY } from './advisory';
 
 type Filter = 'today' | 'offline' | 'new' | 'all';
 
@@ -46,6 +49,29 @@ export default function DashboardPage({ live, nav }: { live: Live; nav: Nav }) {
   }, [violations, filter]);
 
   const online = devices.filter((d) => d.online).length;
+
+  /* AI use cases, each with a live number (computed by the advisory engine or from the records). */
+  const ai = useMemo(() => {
+    if (!intel) return null;
+    const recs = violations.filter((v) => !v.voided);
+    const withPlate = recs.filter((v) => v.plate?.number);
+    const byReader = withPlate.filter((v) => v.plate.source === 'ocr').length;
+    const need = new Map(intel.deployment.need.map((n) => [n.areaId, n.guards]));
+    const next3 = intel.forecast.areas
+      .slice()
+      .sort((a, b) => b.next3 - a.next3)
+      .slice(0, 5)
+      .map((a) => ({ ...a, guards: need.get(a.areaId) ?? 0 }));
+    return {
+      byReader,
+      withPlate: withPlate.length,
+      escalate: intel.offenders.filter((o) => o.count >= 3).length,
+      rising: intel.hotspots.filter((h) => h.trendPct > 0).length,
+      next3,
+      maxNext3: Math.max(1, ...next3.map((a) => a.next3)),
+      peak: intel.forecast.hourly.reduce((b, h) => (h.expected > b.expected ? h : b), intel.forecast.hourly[0]),
+    };
+  }, [intel, violations]);
 
   return (
     <>
@@ -82,6 +108,119 @@ export default function DashboardPage({ live, nav }: { live: Live; nav: Nav }) {
             ))}
           </div>
         </section>
+      )}
+
+      {intel && ai && (
+        <div className="ai-row">
+          <section className="card">
+            <div className="card-head">
+              <div>
+                <h3 className="adv-panel-title">
+                  <TrendingUp size={15} /> Prediction — next 24 hours
+                </h3>
+                <div className="faint" style={{ fontSize: 12 }}>
+                  ~{intel.forecast.next24} violations expected · peak around {String(ai.peak?.hour ?? 0).padStart(2, '0')}:00 · confidence {intel.forecast.confidence}%
+                </div>
+              </div>
+              <button className="btn btn-sm btn-ghost" onClick={() => nav.go('advisory')}>
+                Details <ChevronRight size={14} />
+              </button>
+            </div>
+            <div className="card-pad">
+              <ForecastChart fc={intel.forecast} />
+              <div className="faint" style={{ fontSize: 11.5 }}>
+                <span className="c-legend-sq is-near" /> next 3 h · <span className="c-legend-sq is-peak" /> peak · learned from recent history by hour, weekday and area
+              </div>
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="card-head">
+              <div>
+                <h3 className="adv-panel-title">
+                  <MapPinned size={15} /> Predicted busiest — next 3 hours
+                </h3>
+                <div className="faint" style={{ fontSize: 12 }}>
+                  Where violations are expected, against guards on patrol there
+                </div>
+              </div>
+            </div>
+            <div className="c-stages">
+              {ai.next3.map((a) => (
+                <button key={a.areaId} className="stage-row ai-area" onClick={() => nav.focusArea(a.areaId)} title="Open in AI Advisory">
+                  <span className="c-ellipsis">{a.label.replace(/ \(.*\)$/, '')}</span>
+                  <span className="stage-bar">
+                    <span className="stage-fill" style={{ width: `${(a.next3 / ai.maxNext3) * 100}%` }} />
+                  </span>
+                  <span className="stage-n">{a.next3 < 1 ? '<1' : `~${Math.round(a.next3)}`}</span>
+                  <span className={`chip ${a.guards ? 'chip-success' : a.next3 >= 1 ? 'chip-warning' : ''}`} title="Guards assigned to this area">
+                    {a.guards ? `${a.guards} guard${a.guards > 1 ? 's' : ''}` : 'no guard'}
+                  </span>
+                </button>
+              ))}
+              {!ai.next3.length && <div className="c-empty">Not enough history yet.</div>}
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="card-head">
+              <div>
+                <h3 className="adv-panel-title">
+                  <BrainCircuit size={15} /> AI at work
+                </h3>
+                <div className="faint" style={{ fontSize: 12 }}>
+                  What the AI is doing for the team right now
+                </div>
+              </div>
+            </div>
+            <div className="ai-uses">
+              <button className="ai-use" onClick={() => nav.go('violations')}>
+                <ScanLine size={18} />
+                <div>
+                  <b>{ai.withPlate ? Math.round((ai.byReader / ai.withPlate) * 100) : 0}%</b> plates read by the phone
+                  <span>
+                    {ai.byReader} of {ai.withPlate} · on the device, works offline
+                  </span>
+                </div>
+              </button>
+              <button className="ai-use" onClick={() => nav.go('advisory')}>
+                <Repeat size={18} />
+                <div>
+                  <b>{intel.offenders.length}</b> repeat offenders
+                  <span>{ai.escalate} to escalate · flagged on guards&apos; phones</span>
+                </div>
+              </button>
+              <button className="ai-use" onClick={() => nav.go('advisory')}>
+                <Copy size={18} />
+                <div>
+                  <b>{intel.anomalies.length}</b> duplicates &amp; anomalies
+                  <span>caught before they become fines</span>
+                </div>
+              </button>
+              <button className="ai-use" onClick={() => nav.go('advisory')}>
+                <Flame size={18} />
+                <div>
+                  <b>{ai.rising}</b> hotspots rising
+                  <span>of {intel.hotspots.length} tracked, week on week</span>
+                </div>
+              </button>
+              <button className="ai-use" onClick={() => nav.go('team')}>
+                <Smartphone size={18} />
+                <div>
+                  <b>{intel.deployment.suggestions.length}</b> deployment moves
+                  <span>guards to where violations are predicted</span>
+                </div>
+              </button>
+              <div className="ai-use is-static" title={intel.ai?.reason}>
+                <ShieldCheck size={18} />
+                <div>
+                  <b>{intel.ai?.vision ? 'On' : 'Rules'}</b> {intel.ai?.vision ? 'vision double-check' : 'explainable engine'}
+                  <span>{intel.ai?.vision ? `${intel.ai.label} re-reads each uploaded plate` : 'every number traceable; a model can be switched on'}</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
       )}
 
       <div className="c-kpis">

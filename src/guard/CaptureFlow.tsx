@@ -22,7 +22,7 @@ import { TypeIcon } from '../lib/ui';
 import { saveRecord, replaceUnsynced, nextSeq, photosFor, allRecords, getDraft, saveDraft, clearDraft, type LocalRecord } from './offline/db';
 import { deviceInfo, deviceLabel, uuid } from './offline/device';
 import { processPhoto } from './offline/photo';
-import { readPlate } from './offline/plateOcr';
+import { readPlate, type PlateRead } from './offline/plateOcr';
 import { getStatus, getFieldPack, subscribePack } from './offline/sync';
 import { useGps, setGpsMode } from './offline/location';
 import { plateHistory, plateKey } from '../../shared/intel.js';
@@ -55,7 +55,8 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
   const [code, setCode] = useState(editing?.plate.code ?? '');
   const [number, setNumber] = useState(editing?.plate.number ?? '');
   const [plateSource, setPlateSource] = useState<'ocr' | 'manual'>(editing?.plate.source ?? 'manual');
-  const [ocr, setOcr] = useState<{ state: 'idle' | 'reading' | 'done' | 'failed'; msg?: string; confidence?: number }>({ state: 'idle' });
+  // 'suggest': the reader found something plate-like but could not confirm it — shown, never filled in.
+  const [ocr, setOcr] = useState<{ state: 'idle' | 'reading' | 'done' | 'suggest' | 'failed'; msg?: string; confidence?: number; s?: PlateRead }>({ state: 'idle' });
   const [type, setType] = useState<string>(editing?.type ?? '');
   const [areaId, setAreaId] = useState(editing?.location.areaId ?? user.area ?? '');
   const [areaTouched, setAreaTouched] = useState(Boolean(editing));
@@ -143,23 +144,25 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
     if (nearest && nearest.d < 6) setAreaId(nearest.a.id);
   }, [gps, areaTouched]);
 
+  const applyPlate = useCallback((r: PlateRead) => {
+    setNumber(r.number);
+    setCode(r.code);
+    if (r.emirate) setEmirate(r.emirate);
+    setPlateSource('ocr');
+    setOcr({ state: 'done', confidence: r.confidence });
+  }, []);
+
   const runOcr = useCallback(async (file: Blob) => {
     setOcr({ state: 'reading' });
     try {
       const r = await readPlate(file);
-      if (!r.number) {
-        setOcr({ state: 'failed', msg: 'Could not read a plate number — type it below' });
-        return;
-      }
-      setNumber(r.number);
-      setCode(r.code);
-      if (r.emirate) setEmirate(r.emirate);
-      setPlateSource('ocr');
-      setOcr({ state: 'done', confidence: r.confidence });
+      if (r.verdict === 'read') applyPlate(r);
+      else if (r.verdict === 'unsure') setOcr({ state: 'suggest', s: r });
+      else setOcr({ state: 'failed', msg: 'No plate number found in that photo — type it below, or scan again closer and straight on' });
     } catch {
       setOcr({ state: 'failed', msg: 'Plate reader is not available on this phone right now — type the plate' });
     }
-  }, []);
+  }, [applyPlate]);
 
   function pick(kind: 'vehicle' | 'plate', file?: File | null) {
     if (!file) return;
@@ -178,13 +181,9 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
   function onScan(r: ScanResult) {
     setScanning(false);
     setPlateShot(shotOf(r.photo));
-    if (r.number) {
-      setNumber(r.number);
-      setCode(r.code);
-      if (r.emirate) setEmirate(r.emirate);
-      setPlateSource('ocr');
-      setOcr({ state: 'done', confidence: r.confidence });
-    } else setOcr({ state: 'failed', msg: 'No plate number read — type it below' });
+    // The guard saw the reading next to the live plate and tapped "Use" — that is the confirmation.
+    if (r.number) applyPlate(r);
+    else setOcr({ state: 'failed', msg: 'No plate number read — type it below' });
   }
 
   const capturedAt = editing?.capturedAt ?? vehicle?.at ?? openedAt;
@@ -335,6 +334,22 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
                 {(ocr.confidence ?? 0) >= 50 ? `Read by the plate reader (${ocr.confidence}% sure) — check it matches the plate.` : `Low-confidence read (${ocr.confidence}%) — check every character.`}
                 {!code && ' Type the code — it could not be read.'}
               </span>
+            </div>
+          )}
+          {ocr.state === 'suggest' && ocr.s && (
+            <div className="g-note g-note-warn">
+              <ScanLine size={15} />
+              <span>
+                Not sure — is it{' '}
+                <b className="mono">
+                  {ocr.s.code ? `${ocr.s.code} ` : ''}
+                  {ocr.s.number}
+                </b>
+                ? Check the plate before using it.
+              </span>
+              <button className="g-note-btn" onClick={() => applyPlate({ ...ocr.s!, confidence: Math.min(ocr.s!.confidence, 60) })}>
+                Use it
+              </button>
             </div>
           )}
           {ocr.state === 'failed' && (

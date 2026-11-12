@@ -15,10 +15,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ChevronLeft, ChevronRight, Eye, EyeOff, LayoutDashboard, ListChecks, Loader2, Lock, LogOut, Menu, Moon, Sparkles, Sun, Users, X,
+  AlertTriangle, ChevronLeft, RefreshCw, ChevronRight, Eye, EyeOff, LayoutDashboard, ListChecks, Loader2, Lock, LogOut, Menu, Moon, Sparkles, Sun, Users, X,
 } from 'lucide-react';
 import { request, ApiError, type User, type Advisory } from '../lib/api';
 import { Brand, applyTheme, useTheme } from '../lib/ui';
+import { activateWaitingWorker, buildLabel, watchVersion } from '../lib/version';
 import { useLive } from './useLive';
 import { ToastHost, ViolationDrawer } from './parts';
 import { AdvisoryRow } from './advisory';
@@ -105,7 +106,19 @@ function Shell({ session, onSignOut }: { session: ConsoleSession; onSignOut: () 
   });
   const [mobileNav, setMobileNav] = useState(false);
   const [advOpen, setAdvOpen] = useState(false);
+  const [newBuild, setNewBuild] = useState(false);
   const theme = useTheme();
+
+  /* Always run the latest build: take over from any waiting service worker (left behind by the
+     guard app's offline mode), and watch /version.json for a redeploy. A tab that is not being
+     looked at reloads itself; a visible one shows a banner (it may hold an edit in progress). */
+  useEffect(() => {
+    void activateWaitingWorker();
+    return watchVersion(() => {
+      if (document.visibilityState === 'hidden') window.location.reload();
+      else setNewBuild(true);
+    });
+  }, []);
   const live = useLive(session.token, onSignOut);
 
   useEffect(() => {
@@ -207,7 +220,11 @@ function Shell({ session, onSignOut }: { session: ConsoleSession; onSignOut: () 
             {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
             {!collapsed && <span className="nav-label">Collapse</span>}
           </button>
-          {!collapsed && <div className="powered-by">Powered by Astrikos</div>}
+          {!collapsed && (
+            <div className="powered-by" title={`Build ${buildLabel()}`}>
+              Powered by Astrikos · build {buildLabel()}
+            </div>
+          )}
         </div>
       </aside>
 
@@ -243,6 +260,14 @@ function Shell({ session, onSignOut }: { session: ConsoleSession; onSignOut: () 
             </button>
           </div>
         </header>
+        {newBuild && (
+          <div className="c-alert c-alert-info" role="status">
+            <RefreshCw size={16} /> A new version of the control room has been deployed.
+            <button className="btn btn-sm btn-primary" style={{ marginLeft: 'auto' }} onClick={() => window.location.reload()}>
+              Reload now
+            </button>
+          </div>
+        )}
         {live.error && (
           <div className="c-alert">
             <AlertTriangle size={16} /> Could not reach the server: {live.error}

@@ -1,7 +1,7 @@
 {
   "headers": [
     {
-      "source": "{sw.js,workbox-*.js,index.html,manifest.webmanifest}",
+      "source": "{sw.js,workbox-*.js,index.html,manifest.webmanifest,version.json,registerSW.js}",
       "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
     },
     {

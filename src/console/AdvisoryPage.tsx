@@ -25,7 +25,7 @@ import { PlateChip, useNow } from '../lib/ui';
 import type { Live } from './useLive';
 import type { Nav } from './ConsoleApp';
 import { Kpi, MapView, useToast } from './parts';
-import { AdvisoryRow } from './advisory';
+import { AdvisoryRow, ForecastChart } from './advisory';
 
 
 export default function AdvisoryPage({ live, nav, focusArea }: { live: Live; nav: Nav; focusArea: string | null }) {
@@ -44,7 +44,6 @@ export default function AdvisoryPage({ live, nav, focusArea }: { live: Live; nav
 
   const fc = intel.forecast;
   const top = intel.hotspots[0];
-  const maxHour = Math.max(1, ...fc.hourly.map((h) => h.expected));
   const maxArea = Math.max(1, ...fc.areas.map((a) => a.next24));
   const recent7 = live.violations.filter((v) => !v.voided && v.capturedAt >= Date.now() - 7 * 86_400_000);
 
@@ -142,28 +141,7 @@ export default function AdvisoryPage({ live, nav, focusArea }: { live: Live; nav
               </div>
             </div>
             <div className="card-pad">
-              <svg className="c-chart" viewBox="0 0 480 150" role="img" aria-label={`Forecast: about ${fc.next24} violations in the next 24 hours`}>
-                {[0.25, 0.5, 0.75, 1].map((g) => (
-                  <line key={g} x1="0" x2="480" y1={130 - g * 112} y2={130 - g * 112} className="c-chart-grid" />
-                ))}
-                {fc.hourly.map((h, i) => {
-                  const bh = Math.max(1.5, (h.expected / maxHour) * 112);
-                  return (
-                    <g key={i}>
-                      <rect x={i * 20 + 3} y={130 - bh} width="14" height={bh} rx="3" className={i < 3 ? 'c-chart-bar is-near' : 'c-chart-bar'}>
-                        <title>
-                          {String(h.hour).padStart(2, '0')}:00 — ~{h.expected}
-                        </title>
-                      </rect>
-                      {i % 3 === 0 && (
-                        <text x={i * 20 + 10} y="146" className="c-chart-label" textAnchor="middle">
-                          {String(h.hour).padStart(2, '0')}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </svg>
+              <ForecastChart fc={fc} />
               <div className="faint" style={{ fontSize: 11.5 }}>
                 <span className="c-legend-sq is-near" /> next 3 h · Method: {fc.method}. A staffing guide, not a promise.
               </div>

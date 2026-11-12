@@ -8,11 +8,13 @@
  * production `.env.production` points at the API subdomain.
  */
 import * as catalog from '../../shared/catalog.js';
+import { buildLabel } from './version';
 
 const sameOrigin = () => (typeof window === 'undefined' ? '' : window.location.origin);
 export const API_URL: string = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').replace(/\/$/, '');
 export const SOCKET_URL: string = ((import.meta.env.VITE_SOCKET_URL as string | undefined) ?? '').replace(/\/$/, '') || API_URL || sameOrigin();
-export const APP_VERSION = '1.0.0';
+/** Shown in Settings and reported by each phone (Field Team page), so a redeploy can be confirmed per device. */
+export const APP_VERSION = `1.1 · ${buildLabel()}`;
 
 export const photoUrl = (p: string) => (/^(https?:|blob:|data:)/.test(p) ? p : `${API_URL}${p}`);
 
