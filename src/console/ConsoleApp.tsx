@@ -18,7 +18,7 @@ import {
   AlertTriangle, ChevronLeft, RefreshCw, ChevronRight, Eye, EyeOff, LayoutDashboard, ListChecks, Loader2, Lock, LogOut, Menu, Moon, Sparkles, Sun, Users, X,
 } from 'lucide-react';
 import { request, ApiError, type User, type Advisory } from '../lib/api';
-import { Brand, applyTheme, useTheme } from '../lib/ui';
+import { Brand, ClientLogo, PoweredBy, applyTheme, useTheme } from '../lib/ui';
 import { activateWaitingWorker, buildLabel, watchVersion } from '../lib/version';
 import { useLive } from './useLive';
 import { ToastHost, ViolationDrawer } from './parts';
@@ -387,6 +387,7 @@ function ConsoleSignIn({ onSignedIn }: { onSignedIn: (s: ConsoleSession) => void
   return (
     <div className="signin">
       <form className="card signin-card" onSubmit={submit}>
+        <ClientLogo />
         <Brand sub="Violation Control Room" />
         <div>
           <h1 className="signin-title">Sign in</h1>
@@ -417,6 +418,7 @@ function ConsoleSignIn({ onSignedIn }: { onSignedIn: (s: ConsoleSession) => void
           {busy ? <Loader2 size={18} className="spin" /> : <Lock size={18} />} Sign in
         </button>
         <p className="signin-hint">Demo: admin or supervisor · password Astrikos2026</p>
+        <PoweredBy />
       </form>
     </div>
   );

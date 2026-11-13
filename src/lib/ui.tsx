@@ -53,6 +53,24 @@ export function Brand({ sub }: { sub?: string }) {
   );
 }
 
+/** Client logo, centred at the top of a sign-in card. */
+export function ClientLogo() {
+  return (
+    <div className="client-logo">
+      <img src="/brand/alphadata-logo.png" alt="Alpha Data" />
+    </div>
+  );
+}
+
+export function PoweredBy() {
+  return (
+    <div className="powered-by">
+      <span>Powered by</span>
+      <img src="/brand/astrikos-mark.png" alt="Astrikos" />
+    </div>
+  );
+}
+
 export const severityChip = (s: string) => (s === 'high' ? 'chip-danger' : s === 'medium' ? 'chip-warning' : 'chip-info');
 
 /* ── theme (dark default, light optional; remembered per browser) ──────── */

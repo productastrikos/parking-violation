@@ -547,6 +547,34 @@ textarea {
   font-size: 12px;
   color: var(--app-text-faint);
 }
+.powered-by {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--app-border, rgba(128, 128, 128, 0.25));
+  font-size: 12px;
+  color: var(--app-text-faint);
+}
+.powered-by img {
+  height: 26px;
+  width: auto;
+}
+/* the Alpha Data logo is a square on white — keep it as a tile so it reads in dark mode too */
+.client-logo {
+  display: flex;
+  justify-content: center;
+}
+.client-logo img {
+  box-sizing: border-box;
+  height: 92px;
+  width: 92px;
+  padding: 8px; /* keeps the artwork clear of the rounded corners */
+  border-radius: 16px;
+  background: #fff;
+  object-fit: contain;
+}
 .pw-wrap {
   position: relative;
 }

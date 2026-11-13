@@ -22,7 +22,7 @@ import {
 import { registerSW } from 'virtual:pwa-register';
 import { watchVersion } from '../lib/version';
 import { request, ApiError, APP_VERSION, typeOf, areaOf, fmtDateTime, fmtTime, ago, statusLabel, type User } from '../lib/api';
-import { PlateChip, TypeIcon, useNow, useTheme, applyTheme } from '../lib/ui';
+import { ClientLogo, PlateChip, PoweredBy, TypeIcon, useNow, useTheme, applyTheme } from '../lib/ui';
 import { allRecords, deleteUnsynced, photosFor, pruneSynced, queueOp, type LocalRecord } from './offline/db';
 import { getSession, setSession, clearSession, verifyOffline, rememberCredential, lastUsername, setLastUsername, type Session } from './offline/offlineAuth';
 import { deviceInfo, renameDevice, platformLabel, isIOS, isStandalone, requestPersistence, uuid } from './offline/device';
@@ -227,6 +227,7 @@ function GuardSignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
   return (
     <div className="g-signin m-shell">
       <form className="n-card g-signin-card" onSubmit={submit}>
+        <ClientLogo />
         <div className="g-signin-brand">
           <img src="/brand/astrikos-solo.png" alt="" />
           <div>
@@ -265,6 +266,7 @@ function GuardSignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
           {sync.online === false ? 'Sign in offline' : 'Sign in'}
         </button>
         <p className="signin-hint">Works without internet after your first sign-in on this phone. Demo: guard1 … guard4 · Astrikos2026</p>
+        <PoweredBy />
       </form>
     </div>
   );
