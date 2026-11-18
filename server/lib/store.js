@@ -17,10 +17,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { SEED_USERS, SEED_PASSWORD, buildSeedViolations } from './seed.js';
+import { SEED_USERS, SEED_PASSWORD, buildSeedViolations, buildSeedRoutes } from './seed.js';
 import { VIOLATION_TYPES } from '../../shared/catalog.js';
 
-const DATA_DIR = path.resolve(import.meta.dirname, '..', 'data');
+/* DATA_DIR (env) points the store elsewhere — a laptop demo or a test run keeps its own data. */
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.resolve(import.meta.dirname, '..', 'data');
 const STORE_FILE = path.join(DATA_DIR, 'store.json');
 export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const SESSION_TTL = 30 * 86_400_000;
@@ -90,6 +91,9 @@ function migrate(s) {
       s.users.push({ ...seeded, active: true, passwordHash: hashPassword(SEED_PASSWORD), createdAt: Date.now(), createdBy: 'system' });
     }
   }
+  // Patrol routes (set on the dashboard) and patrol reports (from the phones). A store that predates them gets the sample routes.
+  if (!Array.isArray(s.routes)) s.routes = buildSeedRoutes();
+  s.patrols ||= [];
   // Nothing is "online" at boot — sockets reconnect and say so.
   for (const d of Object.values(s.devices)) d.online = false;
   const now = Date.now();
@@ -227,6 +231,119 @@ export function insertViolation(v) {
   state.violations.unshift(v);
   persist();
   return { violation: v, created: true };
+}
+
+/* ── patrol routes & reports ───────────────────────────────────────────── */
+export const routes = () => state.routes;
+/** Number or null — unlike num(), null/empty stay null (a missing finish time is not 1970). */
+const opt = (x) => (x === null || x === undefined || x === '' ? null : num(x));
+
+/** Create or update a route (supervisor/admin). Kept small enough to fit one QR code for the phone. */
+export function saveRoute(input, actor) {
+  const id = txt(input.id, 64) || `rt-${crypto.randomUUID().slice(0, 8)}`;
+  const name = txt(input.name, 60);
+  if (!name) throw httpError(422, 'Give the route a name');
+  const guard = findUser(input.guardId);
+  if (!guard || guard.role !== 'guard') throw httpError(422, 'Choose the guard who walks this route');
+  const checkpoints = (Array.isArray(input.checkpoints) ? input.checkpoints : [])
+    .map((c, i) => ({ id: txt(c?.id, 40) || `${id}-${i}`, lat: opt(c?.lat), lng: opt(c?.lng), label: txt(c?.label, 40) }))
+    .filter((c) => c.lat !== null && c.lng !== null && Math.abs(c.lat) <= 90 && Math.abs(c.lng) <= 180);
+  if (checkpoints.length < 2) throw httpError(422, 'A route needs at least 2 checkpoints');
+  if (checkpoints.length > 20) throw httpError(422, 'At most 20 checkpoints per route (so it fits in the code for the phone)');
+  const days = [...new Set((Array.isArray(input.days) ? input.days : []).map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
+  if (!days.length) throw httpError(422, 'Choose at least one day');
+  const hhmm = (t, d) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(t ?? '')) ? t : d);
+  const route = {
+    id,
+    name,
+    guardId: guard.id,
+    areaId: txt(input.areaId, 40),
+    checkpoints,
+    loop: Boolean(input.loop),
+    days,
+    start: hhmm(input.start, '07:00'),
+    end: hhmm(input.end, '15:00'),
+    radiusM: Math.min(200, Math.max(10, Math.round(opt(input.radiusM) ?? 40))),
+    active: input.active !== false,
+    updatedAt: Date.now(),
+    updatedBy: actor.name,
+  };
+  const i = state.routes.findIndex((r) => r.id === id);
+  if (i >= 0) state.routes[i] = route;
+  else state.routes.push(route);
+  audit('route.save', actor, { id, name, guard: guard.id, checkpoints: checkpoints.length });
+  persist();
+  return route;
+}
+
+export function deleteRoute(id, actor) {
+  const r = state.routes.find((x) => x.id === id);
+  if (!r) throw httpError(404, 'No such route');
+  state.routes = state.routes.filter((x) => x.id !== id);
+  audit('route.delete', actor, { id, name: r.name });
+  persist();
+  return r;
+}
+
+/** Reports from the last `days` days, newest first. */
+export const patrols = (days = 7) => {
+  const cutoff = Date.now() - days * 86_400_000;
+  return state.patrols.filter((p) => (p.startedAt ?? 0) >= cutoff).sort((a, b) => b.startedAt - a.startedAt);
+};
+
+/** Store a patrol report from a phone — the same report may arrive twice (cable and network): visits merge. */
+export function upsertPatrol(rep, via, actor) {
+  const id = txt(rep.id, 64);
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) throw httpError(400, 'Missing report id');
+  const visits = (Array.isArray(rep.visits) ? rep.visits : [])
+    .slice(0, 60)
+    .map((v) => ({ cp: Math.trunc(opt(v?.cp) ?? -1), at: opt(v?.at), how: ['gps', 'manual', 'demo'].includes(v?.how) ? v.how : 'manual' }))
+    .filter((v) => v.cp >= 0 && v.at);
+  const now = Date.now();
+  const existing = state.patrols.find((p) => p.id === id);
+  if (existing) {
+    for (const v of visits) {
+      const cur = existing.visits.find((x) => x.cp === v.cp);
+      if (!cur) existing.visits.push(v);
+      else if (v.at < cur.at) Object.assign(cur, v);
+    }
+    existing.visits.sort((a, b) => a.at - b.at);
+    existing.finishedAt = opt(rep.finishedAt) ?? existing.finishedAt ?? null;
+    existing.updatedAt = now;
+    persist();
+    return { patrol: existing, created: false };
+  }
+  const startedAt = opt(rep.startedAt) ?? now;
+  const patrol = {
+    id,
+    routeId: txt(rep.routeId, 64),
+    routeName: txt(rep.routeName, 60),
+    guardId: txt(rep.guardId, 40).toLowerCase(),
+    guardName: txt(rep.guardName, 80),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(rep.date ?? '')) ? rep.date : new Date(startedAt).toISOString().slice(0, 10),
+    startedAt,
+    finishedAt: opt(rep.finishedAt) ?? null,
+    total: Math.max(0, Math.min(60, Math.trunc(opt(rep.total) ?? 0))),
+    visits: visits.sort((a, b) => a.at - b.at),
+    deviceId: txt(rep.deviceId, 64),
+    deviceLabel: txt(rep.deviceLabel, 60),
+    receivedAt: now,
+    via,
+  };
+  state.patrols.unshift(patrol);
+  if (state.patrols.length > 2000) state.patrols.length = 2000;
+  audit('patrol.report', actor, { id, route: patrol.routeId, guard: patrol.guardId, reached: visits.length, total: patrol.total, via });
+  persist();
+  return { patrol, created: true };
+}
+
+/** Replace a record's photo list (used to re-attach evidence whose files went missing). */
+export function setPhotos(id, photos) {
+  const v = findViolation(id);
+  if (!v) return null;
+  v.photos = photos;
+  persist();
+  return v;
 }
 
 export function setStatus(id, status, note, actor) {
@@ -405,14 +522,15 @@ export function recordNoticePrint(id, input, actor, surface) {
     notice: { ...notice, copy },
   };
   v.notices.push(p);
-  const what = p.copy === 'original' ? 'Penalty notice issued & printed' : p.copy === 'office' ? 'Office copy of the notice printed' : 'Duplicate notice printed';
+  const paperless = p.method === 'electronic';
+  const what = p.copy === 'original' ? (paperless ? 'Penalty notice issued (no paper printed)' : 'Penalty notice issued & printed') : p.copy === 'office' ? 'Office copy of the notice printed' : 'Duplicate notice printed';
   const amount = notice.fine != null ? `AED ${notice.fine.toLocaleString('en-US')}` : 'amount to be assessed';
   v.history.push({ at: p.at, by: actor.name, action: what, note: `${notice.ref} · ${amount}${p.printer ? ` · ${p.printer}` : ''}` });
   // Handing the driver the notice IS issuing the fine.
   if (!v.voided && p.copy === 'original' && (v.status === 'new' || v.status === 'reviewed')) {
     const from = v.status;
     v.status = 'actioned';
-    v.history.push({ at: p.at, by: actor.name, action: `Status: ${from} → actioned`, note: 'notice handed to the driver' });
+    v.history.push({ at: p.at, by: actor.name, action: `Status: ${from} → actioned`, note: paperless ? 'fine issued on the phone' : 'notice handed to the driver' });
   }
   v.updatedAt = at;
   audit('violation.notice', actor, { id: v.id, no: p.no, copy: p.copy, method: p.method, fine: notice.fine, surface });

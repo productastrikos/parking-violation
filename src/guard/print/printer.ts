@@ -1,15 +1,15 @@
-/**
+﻿/**
  * The guard's pocket fine printer. Four ways to reach one, because phones and
  * printers differ:
  *
  *   bluetooth  Direct Bluetooth (BLE) to an ESC/POS thermal printer, from the
  *              app itself. Android Chrome, desktop Chrome/Edge. NOT iPhone
- *              Safari — Apple does not give web apps Bluetooth (an iPhone can
+ *              Safari â€” Apple does not give web apps Bluetooth (an iPhone can
  *              use it inside the free "Bluefy" browser, which adds it).
  *   rawbt      Android: hands the print job to the RawBT print-service app,
  *              which talks to classic-Bluetooth (SPP), USB and Wi-Fi printers
  *              the browser cannot reach.
- *   share      iPhone + Android: the notice as an image to the share sheet →
+ *   share      iPhone + Android: the notice as an image to the share sheet â†’
  *              the printer maker's own app (most mini printers ship one), or
  *              AirPrint / Save to Files.
  *   system     The phone's print dialog: AirPrint on iPhone, the Android print
@@ -17,11 +17,18 @@
  *
  * Every method prints the SAME picture (notice.ts), so the notice looks the
  * same whichever way it reaches paper. Settings are per phone (localStorage).
+ *
+ * IN THE ANDROID APP (NATIVE_APP) the same four routes run through the native
+ * FinePrinter plugin (nativePrinter.ts): "bluetooth" is classic Bluetooth to a
+ * printer paired once in Android Settings â†’ Bluetooth, chosen in the app's
+ * Settings; RawBT, share and the print dialog are native Android intents.
  */
 import { useSyncExternalStore } from 'react';
 import { isIOS } from '../offline/device';
 import { canvasToEscPos } from './escpos';
 import { DEFAULT_LAYOUT, printImage, type NoticeLayout } from '../../lib/notice';
+import { NATIVE_APP } from '../../lib/api';
+import { FinePrinter, nativeMessage, type PairedPrinter } from './nativePrinter';
 
 export type PrintMethod = 'bluetooth' | 'rawbt' | 'share' | 'system';
 export type Paper = 58 | 80;
@@ -48,7 +55,7 @@ export const canShareFiles = () => {
 
 function defaults(): PrinterSettings {
   return {
-    method: hasWebBluetooth() ? 'bluetooth' : isIOS() ? 'share' : 'system',
+    method: NATIVE_APP || hasWebBluetooth() ? 'bluetooth' : isIOS() ? 'share' : 'system',
     ...DEFAULT_LAYOUT,
     offerAfterSave: true,
   };
@@ -91,13 +98,24 @@ export const usePrinter = () =>
 
 /** What each method is called, and whether this phone can use it. */
 export function methodInfo(m: PrintMethod): { label: string; sub: string; available: boolean; why?: string } {
+  if (NATIVE_APP)
+    switch (m) {
+      case 'bluetooth':
+        return { label: 'Bluetooth printer (direct)', sub: 'Pair the printer once in Android Settings â†’ Bluetooth, then choose it below. ESC/POS thermal printers.', available: true };
+      case 'rawbt':
+        return { label: 'RawBT print service', sub: 'For Bluetooth LE, USB or Wi-Fi printers. Needs the free RawBT app (install it while online).', available: true };
+      case 'share':
+        return { label: 'Printer app via Share', sub: "Sends the notice image to the printer maker's app.", available: true };
+      case 'system':
+        return { label: 'System print', sub: 'Android print dialog â€” Mopria or the makerâ€™s print plug-in.', available: true };
+    }
   switch (m) {
     case 'bluetooth':
       return {
         label: 'Bluetooth printer (direct)',
         sub: 'Pair once; prints straight from the app. ESC/POS thermal printers.',
         available: hasWebBluetooth(),
-        why: isIOS() ? 'iPhone Safari does not allow Bluetooth for web apps. Use “Printer app” or “AirPrint” below, or open Park Patrol in the Bluefy browser.' : 'This browser has no Bluetooth access. Use Chrome on Android.',
+        why: isIOS() ? 'iPhone Safari does not allow Bluetooth for web apps. Use â€œPrinter appâ€ or â€œAirPrintâ€ below, or open Park Patrol in the Bluefy browser.' : 'This browser has no Bluetooth access. Use Chrome on Android.',
       };
     case 'rawbt':
       return {
@@ -115,16 +133,28 @@ export function methodInfo(m: PrintMethod): { label: string; sub: string; availa
     case 'system':
       return {
         label: isIOS() ? 'AirPrint (system print)' : 'System print',
-        sub: isIOS() ? 'The iPhone print dialog — AirPrint printers.' : 'Android print service — Mopria or the maker’s plug-in.',
+        sub: isIOS() ? 'The iPhone print dialog â€” AirPrint printers.' : 'Android print service â€” Mopria or the makerâ€™s plug-in.',
         available: true,
       };
   }
 }
 export const METHODS: PrintMethod[] = ['bluetooth', 'rawbt', 'share', 'system'];
-export const recommendedMethod = (): PrintMethod => (hasWebBluetooth() ? 'bluetooth' : isIOS() ? 'share' : isAndroid() ? 'rawbt' : 'system');
+export const recommendedMethod = (): PrintMethod => (NATIVE_APP || hasWebBluetooth() ? 'bluetooth' : isIOS() ? 'share' : isAndroid() ? 'rawbt' : 'system');
 
-/* ══ Bluetooth (Web Bluetooth, GATT) ════════════════════════════════════ */
-/* Minimal typings — lib.dom has none for Web Bluetooth. */
+/* â•â• Android app: paired printers â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/** The phone's paired Bluetooth devices, printer-like ones first. */
+export async function listPairedPrinters(): Promise<PairedPrinter[]> {
+  try {
+    const { printers } = await FinePrinter.listPrinters();
+    return [...printers].sort((a, b) => Number(Boolean(b.printerLike)) - Number(Boolean(a.printerLike)) || a.name.localeCompare(b.name));
+  } catch (e) {
+    throw new Error(nativeMessage(e));
+  }
+}
+export const choosePrinter = (p: PairedPrinter) => setPrinter({ btName: p.name, btId: p.address });
+
+/* â•â• Bluetooth (Web Bluetooth, GATT) â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* Minimal typings â€” lib.dom has none for Web Bluetooth. */
 interface BtChar {
   properties: { write: boolean; writeWithoutResponse: boolean };
   writeValueWithoutResponse?(v: BufferSource): Promise<void>;
@@ -202,7 +232,7 @@ async function findWritable(server: BtServer): Promise<BtChar> {
       /* next */
     }
   }
-  throw new Error('This device has no printer data channel. Is it an ESC/POS thermal printer? Try “RawBT” or “Printer app” instead.');
+  throw new Error('This device has no printer data channel. Is it an ESC/POS thermal printer? Try â€œRawBTâ€ or â€œPrinter appâ€ instead.');
 }
 
 async function open(device: BtDevice) {
@@ -245,7 +275,7 @@ export function forgetBluetooth() {
 
 async function ensureLink() {
   if (link?.device.gatt?.connected) return link;
-  if (link) return open(link.device); // known this session — just reconnect
+  if (link) return open(link.device); // known this session â€” just reconnect
   // Paired before (an earlier session): Chrome can hand the device back without the chooser.
   if (settings.btId && bt().getDevices) {
     try {
@@ -262,7 +292,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Write in chunks. The usable packet size depends on the printer and phone
- * (BLE MTU), which the web cannot read — so start large and step down on the
+ * (BLE MTU), which the web cannot read â€” so start large and step down on the
  * first failure. Writes without response are paced so the printer's small
  * buffer is not overrun (that prints garbage).
  */
@@ -292,7 +322,7 @@ async function sendBt(bytes: Uint8Array, onProgress?: (f: number) => void) {
   l.chunk = size;
 }
 
-/* ══ the other routes ═══════════════════════════════════════════════════ */
+/* â•â• the other routes â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 function b64(bytes: Uint8Array) {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -317,7 +347,7 @@ export async function shareImage(canvas: HTMLCanvasElement, name: string) {
   a.download = file.name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
-  return 'Image saved — open it in your printer app';
+  return 'Image saved â€” open it in your printer app';
 }
 
 export async function systemPrint(canvas: HTMLCanvasElement, paper: Paper) {
@@ -325,14 +355,45 @@ export async function systemPrint(canvas: HTMLCanvasElement, paper: Paper) {
   return 'Sent to the print dialog';
 }
 
+const pngBase64 = async (c: HTMLCanvasElement) => c.toDataURL('image/png').replace(/^data:[^,]*,/, '');
+/** ESC/POS for the chosen paper: 58 mm pocket printers have no cutter (and may not know the cut command). */
+const escposFor = (c: HTMLCanvasElement) => canvasToEscPos(c, { cut: settings.paper === 80 });
+
+/** Android app: the same routes, natively. */
+async function printNative(canvas: HTMLCanvasElement, name: string, method: PrintMethod, onProgress?: (f: number) => void): Promise<string> {
+  try {
+    switch (method) {
+      case 'bluetooth': {
+        if (!settings.btId) throw new Error('Choose your printer first: Settings â†’ Fine printer â†’ Choose printer');
+        onProgress?.(0.1);
+        await FinePrinter.printEscPos({ address: settings.btId, data: b64(escposFor(canvas)) });
+        onProgress?.(1);
+        return `Printed on ${settings.btName ?? 'the Bluetooth printer'}`;
+      }
+      case 'rawbt':
+        await FinePrinter.rawbt({ data: b64(escposFor(canvas)) });
+        return 'Sent to RawBT';
+      case 'share':
+        await FinePrinter.shareImage({ name, data: await pngBase64(canvas) });
+        return 'Sent to the share sheet';
+      case 'system':
+        await FinePrinter.systemPrint({ name, data: await pngBase64(canvas) });
+        return 'Sent to the print dialog';
+    }
+  } catch (e) {
+    throw new Error(nativeMessage(e));
+  }
+}
+
 /** Print the notice picture by the chosen route. Resolves with a short status line. */
 export async function printCanvas(canvas: HTMLCanvasElement, name: string, method: PrintMethod = settings.method, onProgress?: (f: number) => void): Promise<string> {
+  if (NATIVE_APP) return printNative(canvas, name, method, onProgress);
   switch (method) {
     case 'bluetooth':
-      await sendBt(canvasToEscPos(canvas), onProgress);
+      await sendBt(escposFor(canvas), onProgress);
       return `Printed on ${settings.btName ?? 'the Bluetooth printer'}`;
     case 'rawbt':
-      window.location.href = `intent:base64,${b64(canvasToEscPos(canvas))}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
+      window.location.href = `intent:base64,${b64(escposFor(canvas))}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
       return 'Sent to RawBT';
     case 'share':
       return shareImage(canvas, name);

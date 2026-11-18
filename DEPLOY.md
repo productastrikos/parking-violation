@@ -14,6 +14,7 @@ Add to the port registry: `| parking | 3357 | 4357 | live |`
 ```bash
 cd parking-violence
 npm install && npm run build              # also copies the plate-reader files into public/ocr (needs internet once)
+                   # and, the first time, downloads the offline street map into public/map (~20 MB, 2–3 min)
                    # uses .env.production → dist/ (includes sw.js = offline mode)
 
 # Frontend — static. serve reads dist/serve.json (no-cache on sw.js / index.html).
@@ -90,6 +91,7 @@ curl -k https://parking.astrikos.xyz:8443/app                      # SPA HTML
 curl -k -I https://parking.astrikos.xyz:8443/sw.js                 # Cache-Control: no-cache
 curl -k https://parking-api.astrikos.xyz:8443/api/health           # {"ok":true,...}
 curl -k https://parking.astrikos.xyz:8443/version.json             # {"build":"<time of this build>"}
+curl -k https://parking.astrikos.xyz:8443/map/meta.json            # {"tiles":1936,...} — the offline street map
 ```
 
 Then on a phone: open `https://parking.astrikos.xyz:8443/app`, sign in as `guard1`, and check **Settings → Offline mode: Ready**.
@@ -106,6 +108,36 @@ service worker over a self-signed certificate** — so the offline demo on an iP
 git pull && npm install && npm run build && pm2 restart parking_3357    # + pm2 restart parking_be_4357 if server/ changed
 curl -k https://parking.astrikos.xyz:8443/version.json                   # shows the new build time
 ```
+
+### This update (18 Nov 2026): cable handover, offline map, patrol routes
+
+Same command, **and restart the backend**: `server/` changed.
+
+```bash
+cd parking-violence
+git pull && npm install && npm run build      # first build fetches the street map (needs internet once; see below)
+pm2 restart parking_3357 && pm2 restart parking_be_4357
+curl -k https://parking.astrikos.xyz:8443/map/meta.json                  # the map is served
+curl -k https://parking-api.astrikos.xyz:8443/api/health                 # backend is up
+```
+
+- **No data migration to run.** On first start the backend adds two sample patrol routes (guard1, guard2) to the
+  existing `server/data/store.json`; tickets, fines, users and the print log are kept. Tested against data written by
+  the previous version.
+- **Offline street map.** `public/map` is not in git. `npm run build` downloads it once (`prebuild` →
+  `scripts/fetch-map.mjs --if-missing`, OpenStreetMap data from build.protomaps.com) and reuses it on every later
+  build. If the server cannot reach the internet the build still succeeds and the maps fall back to online tiles; run
+  `npm run map:fetch` later to add the map. Refreshing the map: `npm run map:fetch && npm run build`.
+- **Phones download more once.** The guard app now keeps the street map offline: on its next update each phone
+  downloads roughly 20–30 MB (the map plus the changed app files) in the background — the offline copy is 32 MB in
+  all. Update the demo phones on Wi-Fi and open the app once.
+- **No new environment variables, ports or nginx changes.** The new endpoints (`/api/routes`, `/api/patrols`,
+  `/api/cable/import`, `/api/cable/patrol`) are on the same backend.
+- **Check:** dashboard → **Field Team** shows **Patrol routes** with a street map; guard app → **Patrol** shows the
+  guard's route.
+
+The laptop-only demo (no server, cable handover) and the Android app are built on a PC, not on this server:
+`npm run android:build` and `npm run package` → `release/ParkPatrol-Demo.zip`. See `DEMO-CABLE.md`.
 
 Every build is stamped with its build time (`/version.json`, served no-cache). That time is shown in the
 dashboard sidebar ("Powered by Astrikos · build …"), in the guard app under **Settings → Version**, and per

@@ -17,11 +17,12 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   AlertTriangle, Camera, CheckCircle2, ChevronRight, Eye, EyeOff, Home, List, Loader2, Lock, LogOut, PlusSquare, RefreshCw, Settings, Share, Smartphone, Trash2,
-  User as UserIcon, WifiOff, X, RotateCcw, UploadCloud, Hourglass, Info, Pencil, Flag, Sparkles, TrendingUp, TrendingDown, Siren, Search, FlaskConical, Crosshair, Moon, Sun, Ban, Gavel, Clock, Printer,
+  User as UserIcon, WifiOff, X, RotateCcw, UploadCloud, Hourglass, Info, Pencil, Flag, Sparkles, TrendingUp, TrendingDown, Siren, Search, FlaskConical, Crosshair, Moon, Sun, Ban, Gavel, Clock, Printer, Usb,
 } from 'lucide-react';
 import { registerSW } from 'virtual:pwa-register';
 import { watchVersion } from '../lib/version';
-import { request, ApiError, APP_VERSION, typeOf, areaOf, fmtDateTime, fmtTime, ago, statusLabel, type User } from '../lib/api';
+import { request, ApiError, APP_VERSION, CABLE_ONLY, NATIVE_APP, typeOf, areaOf, fmtDateTime, fmtTime, ago, statusLabel, type User } from '../lib/api';
+import { demoSignIn } from './offline/demoRoster';
 import { ClientLogo, PlateChip, PoweredBy, TypeIcon, useNow, useTheme, applyTheme } from '../lib/ui';
 import { allRecords, deleteUnsynced, photosFor, pruneSynced, queueOp, type LocalRecord } from './offline/db';
 import { getSession, setSession, clearSession, verifyOffline, rememberCredential, lastUsername, setLastUsername, type Session } from './offline/offlineAuth';
@@ -34,6 +35,9 @@ import { warmUpOcr } from './offline/plateOcr';
 import CaptureFlow from './CaptureFlow';
 import { Confirm, AskReason } from './Sheet';
 import { PrintSheet, PrinterSettingsSection, FineScheduleSection } from './PrintNotice';
+import { CableSheet } from './CableSheet';
+import { PatrolPanel } from './patrol/PatrolPanel';
+import { reportsToHandOver, usePatrolVersion } from './patrol/patrolStore';
 import { getPrinter } from './print/printer';
 import './guard.css';
 
@@ -99,7 +103,8 @@ export function setCaptureOpen(open: boolean) {
 const checkForUpdate = () => {
   if (navigator.onLine) void swReg?.update().catch(() => {});
 };
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+// The installed phone app carries its files inside the app — no service worker, no web updates.
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !NATIVE_APP) {
   updateSW = registerSW({
     immediate: true,
     onNeedRefresh: () => {
@@ -194,10 +199,22 @@ function GuardSignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
     setBusy(true);
     setError(null);
     try {
-      // Online first: the server is the only place a password is really checked.
       let user: User | null = null;
       let offline = false;
-      try {
+      if (CABLE_ONLY) {
+        // No server exists for this app: the phone's own copy, else the built-in demo accounts.
+        const cred = await verifyOffline(id, password);
+        if (cred && cred !== 'unknown') user = cred.user;
+        else {
+          const demo = await demoSignIn(id, password);
+          if (demo === 'unknown') throw new Error('Unknown account. Demo accounts: guard1 … guard4 and supervisor.');
+          if (!demo) throw new Error('Wrong password');
+          await rememberCredential(password, demo, '');
+          user = demo;
+        }
+        offline = true;
+      } else try {
+        // Online first: the server is the only place a password is really checked.
         const res = await request<{ token: string; user: User }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: id, password, surface: 'app' }), timeoutMs: 6000 });
         user = res.user;
         await rememberCredential(password, res.user, res.token);
@@ -263,9 +280,11 @@ function GuardSignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
         )}
         <button className="btn btn-primary btn-lg btn-block n-primary" disabled={busy}>
           {busy ? <Loader2 size={18} className="spin" /> : <Lock size={18} />}
-          {sync.online === false ? 'Sign in offline' : 'Sign in'}
+          {sync.online === false && !CABLE_ONLY ? 'Sign in offline' : 'Sign in'}
         </button>
-        <p className="signin-hint">Works without internet after your first sign-in on this phone. Demo: guard1 … guard4 · Astrikos2026</p>
+        <p className="signin-hint">
+          {CABLE_ONLY ? 'Stand-alone app — no network used; tickets go to the laptop by USB cable.' : 'Works without internet after your first sign-in on this phone.'} Demo: guard1 … guard4 · Astrikos2026
+        </p>
         <PoweredBy />
       </form>
     </div>
@@ -275,6 +294,12 @@ function GuardSignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
 /* ── connection badge ───────────────────────────────────────────────────── */
 function ConnBadge({ compact = false }: { compact?: boolean }) {
   const s = useSync();
+  if (CABLE_ONLY)
+    return (
+      <span className="chip chip-info n-chip">
+        <Usb size={13} /> Cable mode{s.pending ? ` · ${s.pending} on phone` : ''}
+      </span>
+    );
   if (s.syncing && s.progress)
     return (
       <span className="chip chip-info n-chip">
@@ -307,6 +332,7 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
   useEffect(() => setCaptureOpen(Boolean(capturing)), [capturing]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [printId, setPrintId] = useState<string | null>(null);
+  const [cableIds, setCableIds] = useState<string[] | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
   const recs = useRecords();
   const sync = useSync();
@@ -334,7 +360,15 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
     setTab('home');
     // Hand the fine over on the spot: the print screen opens for the new violation.
     if (id && !edited && getPrinter().offerAfterSave) setPrintId(id);
-    setToast(edited ? { text: 'Changes saved — will upload with the record', tone: 'ok' } : online ? { text: 'Saved — uploading now', tone: 'ok' } : { text: 'Saved on this phone — will upload when online', tone: 'warn' });
+    setToast(
+      CABLE_ONLY
+        ? { text: edited ? 'Changes saved on this phone' : 'Saved on this phone', tone: 'ok' }
+        : edited
+          ? { text: 'Changes saved — will upload with the record', tone: 'ok' }
+          : online
+            ? { text: 'Saved — uploading now', tone: 'ok' }
+            : { text: 'Saved on this phone — will upload when online', tone: 'warn' },
+    );
     recordsChanged();
     void syncNow();
   }, []);
@@ -371,9 +405,19 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
       )}
 
       <main className="g-main" key={tab}>
-        {tab === 'home' && <HomeTab session={session} recs={recs} onRecord={() => setCapturing({})} onOpen={(r) => setOpenId(r.id)} onAll={() => setTab('records')} onPatrol={() => setTab('patrol')} />}
+        {tab === 'home' && (
+          <HomeTab
+            session={session}
+            recs={recs}
+            onRecord={() => setCapturing({})}
+            onOpen={(r) => setOpenId(r.id)}
+            onAll={() => setTab('records')}
+            onPatrol={() => setTab('patrol')}
+            onCable={(ids) => setCableIds(ids)}
+          />
+        )}
         {tab === 'records' && <RecordsTab recs={recs} onOpen={(r) => setOpenId(r.id)} />}
-        {tab === 'patrol' && <PatrolTab session={session} />}
+        {tab === 'patrol' && <PatrolTab session={session} onCable={() => setCableIds(recs.filter((r) => r.syncState !== 'synced').map((r) => r.id))} onToast={setToast} />}
         {tab === 'settings' && <SettingsTab session={session} onSignOut={onSignOut} />}
       </main>
 
@@ -401,6 +445,20 @@ function Shell({ session, onSignOut }: { session: Session; onSignOut: () => void
           onPrint={() => {
             setOpenId(null);
             setPrintId(open.id);
+          }}
+          onCable={() => {
+            setOpenId(null);
+            setCableIds([open.id]);
+          }}
+        />
+      )}
+      {cableIds && (
+        <CableSheet
+          recs={cableIds.map((id) => recs.find((r) => r.id === id)).filter((r): r is LocalRecord => Boolean(r))}
+          onClose={() => setCableIds(null)}
+          onDone={(text) => {
+            setCableIds(null);
+            setToast({ text, tone: 'ok' });
           }}
         />
       )}
@@ -441,10 +499,20 @@ function NavBtn({ icon, label, active, onClick, badge }: { icon: React.ReactNode
 }
 
 /* ── home ───────────────────────────────────────────────────────────────── */
-function HomeTab({ session, recs, onRecord, onOpen, onAll, onPatrol }: { session: Session; recs: LocalRecord[]; onRecord: () => void; onOpen: (r: LocalRecord) => void; onAll: () => void; onPatrol: () => void }) {
+function HomeTab({
+  session, recs, onRecord, onOpen, onAll, onPatrol, onCable,
+}: { session: Session; recs: LocalRecord[]; onRecord: () => void; onOpen: (r: LocalRecord) => void; onAll: () => void; onPatrol: () => void; onCable: (ids: string[]) => void }) {
   const s = useSync();
   const pack = usePack();
   const now = useNow();
+  // Tickets still only on this phone — the ones to hand to the laptop by cable — and patrol reports.
+  const onPhone = useMemo(() => recs.filter((r) => r.syncState !== 'synced'), [recs]);
+  const notSaved = onPhone.filter((r) => !cableSaved(r)).length;
+  const pv = usePatrolVersion();
+  const [patrolsPending, setPatrolsPending] = useState(0);
+  useEffect(() => {
+    void reportsToHandOver().then((l) => setPatrolsPending(l.length));
+  }, [pv]);
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -455,6 +523,17 @@ function HomeTab({ session, recs, onRecord, onOpen, onAll, onPatrol }: { session
   return (
     <>
       <InstallHint />
+      {CABLE_ONLY ? (
+        <section className="n-card g-status is-online">
+          <div className="g-status-icon">
+            <Usb size={22} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="g-status-title">Cable mode — no network used</div>
+            <div className="g-status-sub">Everything is saved on this phone. Hand tickets to the laptop with Send to laptop by cable.</div>
+          </div>
+        </section>
+      ) : (
       <section className={`n-card g-status ${s.online ? 'is-online' : s.online === false ? 'is-offline' : ''}`}>
         <div className="g-status-icon">{s.syncing ? <UploadCloud size={22} /> : s.online ? <CheckCircle2 size={22} /> : s.online === false ? <WifiOff size={22} /> : <Loader2 size={22} className="spin" />}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -462,15 +541,20 @@ function HomeTab({ session, recs, onRecord, onOpen, onAll, onPatrol }: { session
             {s.syncing ? 'Uploading to the control room…' : s.online ? (s.pending ? 'Connected — uploading' : 'Connected — all uploaded') : s.online === false ? 'No connection — working offline' : 'Checking connection…'}
           </div>
           <div className="g-status-sub">
-            {s.online === false ? 'Keep recording. Everything is saved on this phone and uploads by itself when the connection is back.' : s.lastSyncAt ? `Last upload ${ago(s.lastSyncAt, now)}` : 'Violations upload as soon as they are saved.'}
+            {s.online === false
+              ? 'Keep recording. Everything is saved on this phone — hand it to the laptop by USB cable, or it uploads by itself when a connection is back.'
+              : s.lastSyncAt
+                ? `Last upload ${ago(s.lastSyncAt, now)}`
+                : 'Violations upload as soon as they are saved.'}
           </div>
         </div>
         <button className="n-round" onClick={() => void syncNow()} aria-label="Sync now" disabled={s.syncing}>
           <RefreshCw size={18} className={s.syncing ? 'spin' : ''} />
         </button>
       </section>
+      )}
 
-      {session.offline && s.online === false && (
+      {session.offline && s.online === false && !CABLE_ONLY && (
         <div className="g-banner g-banner-warn">
           <Info size={16} /> Signed in offline. Your records are saved here and will upload with your account when online.
         </div>
@@ -489,7 +573,7 @@ function HomeTab({ session, recs, onRecord, onOpen, onAll, onPatrol }: { session
       <div className="g-tiles">
         <div className="n-card g-tile">
           <div className="kpi-value">{s.pending}</div>
-          <div className="g-tile-label">Saved on phone, waiting to upload</div>
+          <div className="g-tile-label">{CABLE_ONLY ? 'On this phone, not yet on the laptop' : 'Saved on phone, waiting to upload'}</div>
         </div>
         <div className="n-card g-tile">
           <div className="kpi-value">{today}</div>
@@ -500,6 +584,24 @@ function HomeTab({ session, recs, onRecord, onOpen, onAll, onPatrol }: { session
       <button className="btn btn-primary btn-lg btn-block g-record n-primary" onClick={onRecord}>
         <Camera size={22} /> Record a violation
       </button>
+
+      {(onPhone.length > 0 || patrolsPending > 0) && (
+        <button className="n-card g-ai-card" onClick={() => onCable(onPhone.map((r) => r.id))}>
+          <div className="g-ai-head">
+            <span className="g-ai-brand">
+              <Usb size={14} /> Send to laptop by cable
+            </span>
+            <ChevronRight size={16} className="faint" />
+          </div>
+          <div className="g-ai-title">
+            {onPhone.length} ticket{onPhone.length === 1 ? '' : 's'} on this phone
+            {patrolsPending ? ` · ${patrolsPending} patrol report${patrolsPending === 1 ? '' : 's'}` : ''}
+          </div>
+          <div className="g-ai-sub">
+            {notSaved || patrolsPending ? `${notSaved + patrolsPending} not yet saved for the laptop · no network needed` : 'All saved for the laptop — connect the cable'}
+          </div>
+        </button>
+      )}
 
       {outlook && (
         <button className="n-card g-ai-card" onClick={onPatrol}>
@@ -542,7 +644,7 @@ function InstallHint() {
       return false;
     }
   });
-  if (isStandalone() || hidden) return null;
+  if (NATIVE_APP || isStandalone() || hidden) return null;
   const hide = () => {
     setHidden(true);
     try {
@@ -621,6 +723,9 @@ function RecordsTab({ recs, onOpen }: { recs: LocalRecord[]; onOpen: (r: LocalRe
   );
 }
 
+/** Saved as a picture for the laptop, and not edited or fined since (else the picture is out of date). */
+const cableSaved = (r: LocalRecord) => Boolean(r.cableExportedAt) && Math.max(r.editedAt ?? 0, r.printedAt ?? 0) <= (r.cableExportedAt ?? 0);
+
 export function SyncChip({ r }: { r: LocalRecord }) {
   if (r.server?.voided)
     return (
@@ -667,6 +772,12 @@ export function SyncChip({ r }: { r: LocalRecord }) {
         </span>
       );
     default:
+      if (cableSaved(r))
+        return (
+          <span className="chip chip-info">
+            <Usb size={12} /> Saved for laptop
+          </span>
+        );
       return (
         <span className="chip chip-warning">
           <Hourglass size={12} /> On phone
@@ -697,7 +808,9 @@ function RecordList({ recs, onOpen }: { recs: LocalRecord[]; onOpen: (r: LocalRe
   );
 }
 
-function RecordSheet({ rec, onClose, onEdit, onToast, onPrint }: { rec: LocalRecord; onClose: () => void; onEdit: () => void; onToast: (t: { text: string; tone: 'ok' | 'warn' }) => void; onPrint: () => void }) {
+function RecordSheet({
+  rec, onClose, onEdit, onToast, onPrint, onCable,
+}: { rec: LocalRecord; onClose: () => void; onEdit: () => void; onToast: (t: { text: string; tone: 'ok' | 'warn' }) => void; onPrint: () => void; onCable: () => void }) {
   const [photos, setPhotos] = useState<{ kind: string; url: string }[]>([]);
   const [ask, setAsk] = useState<'delete' | 'mistake' | null>(null);
   useEffect(() => {
@@ -827,6 +940,11 @@ function RecordSheet({ rec, onClose, onEdit, onToast, onPrint }: { rec: LocalRec
             </button>
           )}
           <div className="g-sheet-actions">
+            {!synced && (
+              <button className="btn btn-lg" onClick={onCable}>
+                <Usb size={16} /> Send to laptop
+              </button>
+            )}
             {canEdit && (
               <button className="btn btn-lg" onClick={onEdit}>
                 <Pencil size={16} /> Edit
@@ -880,27 +998,34 @@ function RecordSheet({ rec, onClose, onEdit, onToast, onPrint }: { rec: LocalRec
 }
 
 /* ── patrol (AI) ────────────────────────────────────────────────────────── */
-function PatrolTab({ session }: { session: Session }) {
+function PatrolTab({ session, onCable, onToast }: { session: Session; onCable: () => void; onToast: (t: { text: string; tone: 'ok' | 'warn' }) => void }) {
   const pack = usePack();
   const s = useSync();
   const now = useNow();
   const [q, setQ] = useState('');
   const query = q.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const matches = useMemo(() => (query.length >= 3 && pack ? pack.watchlist.filter((w) => `${w.plate.code}${w.plate.number}`.includes(query) || w.plate.number.includes(query)) : []), [query, pack]);
+  const panel = <PatrolPanel user={session.user} onCable={onCable} onToast={onToast} />;
 
   if (!pack)
     return (
-      <div className="n-card g-empty">
-        <Sparkles size={28} />
-        <div>The patrol outlook loads the first time this phone is online, then works offline.</div>
-        <button className="btn" onClick={() => void refreshFieldPack(true)} disabled={!s.online}>
-          <RefreshCw size={15} /> Load now
-        </button>
-      </div>
+      <>
+        {panel}
+        {!CABLE_ONLY && (
+          <div className="n-card g-empty">
+            <Sparkles size={28} />
+            <div>The AI patrol outlook loads the first time this phone is online, then works offline.</div>
+            <button className="btn" onClick={() => void refreshFieldPack(true)} disabled={!s.online}>
+              <RefreshCw size={15} /> Load now
+            </button>
+          </div>
+        )}
+      </>
     );
   const o = pack.outlook;
   return (
     <>
+      {panel}
       <section className="n-card g-ai-panel">
         <div className="g-ai-head">
           <span className="g-ai-brand">
@@ -1107,9 +1232,15 @@ function SettingsTab({ session, onSignOut }: { session: Session; onSignOut: () =
             </button>
           </div>
         </div>
-        <InfoRow label="Server" value={`${s.online ? 'Reachable' : s.online === false ? 'Not reachable' : 'Checking'}${s.socket ? ' · live' : ''}`} />
-        <InfoRow label="Offline mode" value={sw.offlineReady ? 'Ready — opens without internet' : 'Not ready (open once online over https)'} good={sw.offlineReady} />
-        <InfoRow label="Installed" value={isStandalone() ? 'Yes — Home Screen app' : 'No — in the browser'} good={isStandalone()} />
+        {CABLE_ONLY ? (
+          <InfoRow label="Hand-over" value="USB cable only — no network" good />
+        ) : (
+          <>
+            <InfoRow label="Server" value={`${s.online ? 'Reachable' : s.online === false ? 'Not reachable' : 'Checking'}${s.socket ? ' · live' : ''}`} />
+            <InfoRow label="Offline mode" value={sw.offlineReady ? 'Ready — opens without internet' : 'Not ready (open once online over https)'} good={sw.offlineReady} />
+            <InfoRow label="Installed" value={isStandalone() ? 'Yes — Home Screen app' : 'No — in the browser'} good={isStandalone()} />
+          </>
+        )}
         <InfoRow label="Storage" value={persisted ? 'Protected from clean-up' : persisted === false ? 'Standard' : 'Unknown'} />
         <InfoRow label="Device id" value={`${dev?.deviceId.slice(0, 8) ?? '…'}…`} mono />
         <InfoRow label="Version" value={APP_VERSION} />

@@ -60,6 +60,8 @@ export interface LocalRecord {
   printCount?: number;
   /** The first (original) notice — reprints repeat its numbers and dates. */
   firstNotice?: Notice;
+  /** When this ticket was last saved as a picture for the laptop (USB-cable handover). Local only. */
+  cableExportedAt?: number;
 }
 
 /** A change to a record, queued like a record so it works offline:
@@ -120,6 +122,11 @@ export async function queueOp(op: Op) {
   const rec = (await tx.objectStore('records').get(op.violationId)) as LocalRecord | undefined;
   if (rec && op.kind === 'correction') await tx.objectStore('records').put({ ...rec, correctionQueued: { reason: op.reason, at: op.createdAt } });
   await tx.done;
+}
+/** The op that issued this record's fine (its first notice), whatever its upload state. */
+export async function firstNoticeOp(violationId: string): Promise<Op | undefined> {
+  const all = ((await (await db()).getAll('ops')) as Op[]).filter((o) => o.kind === 'notice' && o.violationId === violationId && o.notice);
+  return all.sort((a, b) => a.createdAt - b.createdAt).find((o) => o.notice?.copy === 'original') ?? all[0];
 }
 export async function pendingOps(): Promise<Op[]> {
   return ((await (await db()).getAll('ops')) as Op[]).filter((o) => o.state === 'pending').sort((a, b) => a.createdAt - b.createdAt);

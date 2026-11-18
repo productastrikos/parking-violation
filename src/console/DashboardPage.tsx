@@ -12,7 +12,7 @@
  *   Devices: which phone, which guard, online/offline, last upload.
  */
 import { useMemo, useState } from 'react';
-import { BrainCircuit, CheckCircle2, ChevronRight, Copy, Flame, MapPinned, Repeat, ScanLine, ShieldCheck, Smartphone, Sparkles, TrendingUp, WifiOff, Flag } from 'lucide-react';
+import { BrainCircuit, CheckCircle2, ChevronRight, Copy, Flame, MapPinned, Repeat, ScanLine, ShieldCheck, Smartphone, Sparkles, TrendingUp, WifiOff, Flag, Usb } from 'lucide-react';
 import { areaOf, ago, duration, fmtDate, fmtTime } from '../lib/api';
 import { PlateChip, useNow } from '../lib/ui';
 import type { Live } from './useLive';
@@ -249,6 +249,9 @@ export default function DashboardPage({ live, nav }: { live: Live; nav: Nav }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-sm btn-primary" onClick={nav.receiveByCable} title="Import tickets from a phone connected by USB cable — no network needed">
+                <Usb size={14} /> Receive from phone
+              </button>
               <select className="select c-select" value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Filter">
                 <option value="today">Today</option>
                 <option value="offline">Captured offline</option>
@@ -302,7 +305,11 @@ export default function DashboardPage({ live, nav }: { live: Live; nav: Nav }) {
                         </div>
                       </td>
                       <td>
-                        {v.capturedOffline ? (
+                        {v.via === 'cable' ? (
+                          <span className="chip chip-info" title={`Kept on the phone for ${duration(waited)}, then handed over by USB cable`}>
+                            <Usb size={12} /> By cable · {duration(waited)} later
+                          </span>
+                        ) : v.capturedOffline ? (
                           <span className="chip chip-warning" title={`Stored on the phone for ${duration(waited)} before upload`}>
                             <WifiOff size={12} /> Offline · synced {duration(waited)} later
                           </span>
@@ -311,7 +318,7 @@ export default function DashboardPage({ live, nav }: { live: Live; nav: Nav }) {
                             <CheckCircle2 size={12} /> Live
                           </span>
                         )}
-                        {fresh.has(v.id) && <span className="chip chip-accent c-just">just synced</span>}
+                        {fresh.has(v.id) && <span className="chip chip-accent c-just">{v.via === 'cable' ? 'just received' : 'just synced'}</span>}
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -367,7 +374,9 @@ export default function DashboardPage({ live, nav }: { live: Live; nav: Nav }) {
                   </div>
                   <div style={{ textAlign: 'right', fontSize: 12 }}>
                     <div className={d.online ? '' : 'faint'}>{d.online ? 'Online' : `Offline · ${ago(d.lastSeen, now)}`}</div>
-                    <div className="faint">{d.lastSync ? `last upload ${ago(d.lastSync, now)}` : 'no uploads yet'}</div>
+                    <div className="faint">
+                      {d.lastCable && d.lastCable >= (d.lastSync ?? 0) - 1000 ? `by cable ${ago(d.lastCable, now)}` : d.lastSync ? `last upload ${ago(d.lastSync, now)}` : 'no uploads yet'}
+                    </div>
                   </div>
                 </div>
               ))}

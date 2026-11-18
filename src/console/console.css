@@ -1768,3 +1768,289 @@
 .c-fines-save .input {
   flex: 1 1 260px;
 }
+
+/* ── Receive from phone — USB cable (CableImport.tsx) ─────────────────── */
+.cable-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 14px;
+}
+.cable-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.cable-step-no {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--app-on-accent);
+  background: var(--app-accent);
+}
+.cable-drop {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 22px 16px;
+  border: 2px dashed var(--app-border-strong);
+  border-radius: 12px;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cable-drop.is-over {
+  border-color: var(--app-accent);
+  background: var(--app-accent-bg);
+}
+.cable-drop-icon {
+  color: var(--app-accent);
+}
+.cable-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 14px 0 8px;
+  font-size: 13.5px;
+}
+.cable-err {
+  color: var(--app-danger);
+}
+.cable-rows {
+  display: grid;
+  gap: 6px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.cable-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface);
+}
+.cable-row-icon {
+  flex: none;
+  display: grid;
+  color: var(--app-text-faint);
+}
+.cable-row.is-imported .cable-row-icon {
+  color: var(--app-success);
+}
+.cable-row.is-duplicate .cable-row-icon {
+  color: var(--app-info);
+}
+.cable-row.is-error .cable-row-icon {
+  color: var(--app-danger);
+}
+.cable-row-main {
+  flex: 1;
+  min-width: 0;
+}
+.cable-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.cable-skipped {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--app-text-muted);
+}
+.cable-skipped summary {
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.cable-skipped ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 140px;
+  overflow: auto;
+}
+@media (max-width: 760px) {
+  .cable-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Patrol routes (PatrolRoutes.tsx) ─────────────────────────────────── */
+.c-cp-pin {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--cp, #7c3aed);
+  color: #fff;
+  font: 800 11px/1 var(--font-sans, sans-serif);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+.c-route-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 7px;
+  vertical-align: 0;
+}
+.c-route-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  gap: 16px;
+}
+.c-route-map {
+  height: 460px;
+  border-radius: 10px;
+  border: 1px solid var(--app-border);
+  overflow: hidden;
+  cursor: crosshair;
+}
+.c-route-form {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.c-route-form .field {
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--app-text-muted);
+}
+.c-route-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.c-check {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  padding-top: 18px;
+}
+.c-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.c-day {
+  border: 1px solid var(--app-border-strong);
+  background: var(--app-surface);
+  color: var(--app-text-muted);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.c-day.is-on {
+  background: var(--app-accent-bg);
+  border-color: var(--app-accent);
+  color: var(--app-text);
+  font-weight: 700;
+}
+.c-cp-list {
+  display: grid;
+  gap: 6px;
+  max-height: 210px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.c-cp-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.c-cp-row .input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+}
+.c-cp-n {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #7c3aed;
+  color: #fff;
+  font-weight: 800;
+  font-size: 11px;
+}
+.c-route-code {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.c-route-code img {
+  width: 300px;
+  max-width: 100%;
+  background: #fff;
+  border-radius: 10px;
+}
+.c-route-code ol {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  line-height: 1.6;
+}
+.c-patrol-reports {
+  padding: 0 16px 14px;
+}
+.c-patrol-report {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px solid var(--app-border-soft);
+  font-size: 13px;
+}
+@media (max-width: 900px) {
+  .c-route-editor {
+    grid-template-columns: 1fr;
+  }
+  .c-route-map {
+    height: 320px;
+  }
+}
+
+/* No-internet base map: patrol areas drawn over a plain grid (parts.tsx offlineBase). */
+.leaflet-container.is-offline-map {
+  background-color: var(--app-surface-soft);
+  background-image: linear-gradient(var(--app-border-soft) 1px, transparent 1px), linear-gradient(90deg, var(--app-border-soft) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+.leaflet-tooltip.c-area-label {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--app-text-muted);
+  text-shadow: 0 0 3px var(--app-surface), 0 0 3px var(--app-surface);
+  white-space: nowrap;
+}
+.leaflet-tooltip.c-area-label::before {
+  display: none;
+}
+.leaflet-container.is-far .leaflet-tooltip.c-area-label {
+  display: none;
+}

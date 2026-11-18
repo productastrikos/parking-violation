@@ -13,6 +13,7 @@ import { io } from 'socket.io-client';
 import type { Notice } from '../lib/notice';
 import { setFines, type FineSchedule } from '../lib/fines';
 import { request, SOCKET_URL, type Device, type IntelPack, type Stats, type TeamRow, type Violation } from '../lib/api';
+import type { PatrolReport, PatrolRoute } from '../lib/patrol';
 
 export interface EditChanges {
   type?: string;
@@ -46,6 +47,12 @@ export interface Live {
   logNoticePrint: (id: string, body: { notice: Notice; method: string }) => Promise<Violation>;
   saveFines: (changes: Record<string, number | null>, reason: string) => Promise<void>;
   reloadFines: () => Promise<void>;
+  /** Patrol routes (set here) and the last week's patrol reports (from the phones). */
+  routes: PatrolRoute[];
+  patrols: PatrolReport[];
+  reloadPatrol: () => Promise<void>;
+  saveRoute: (route: Partial<PatrolRoute>) => Promise<PatrolRoute>;
+  deleteRoute: (id: string) => Promise<void>;
 }
 
 export function useLive(token: string, onAuthLost: () => void): Live {
@@ -58,7 +65,19 @@ export function useLive(token: string, onAuthLost: () => void): Live {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const [routes, setRoutes] = useState<PatrolRoute[]>([]);
+  const [patrols, setPatrols] = useState<PatrolReport[]>([]);
   const intelTimer = useRef<number | undefined>(undefined);
+
+  const reloadPatrol = useCallback(async () => {
+    try {
+      const [r, p] = await Promise.all([request<{ routes: PatrolRoute[] }>('/api/routes', { token }), request<{ patrols: PatrolReport[] }>('/api/patrols?days=7', { token })]);
+      setRoutes(r.routes);
+      setPatrols(p.patrols);
+    } catch {
+      /* the routes card shows what it has */
+    }
+  }, [token]);
 
   const fail = useCallback(
     (e: unknown) => {
@@ -113,6 +132,7 @@ export function useLive(token: string, onAuthLost: () => void): Live {
     void load();
     void refreshIntel();
     void reloadFines().catch(() => {});
+    void reloadPatrol();
     const it = window.setInterval(() => void refreshIntel(), 60_000);
     const s = io(SOCKET_URL, { auth: { token, surface: 'console' }, reconnectionDelayMax: 5000 });
     s.on('connect', () => {
@@ -153,11 +173,13 @@ export function useLive(token: string, onAuthLost: () => void): Live {
     s.on('stats', (p: { stats: Stats }) => setStats(p.stats));
     s.on('team:changed', () => void reloadTeam().catch(() => {}));
     s.on('fines:changed', (p: { fines: FineSchedule }) => setFines(p.fines));
+    s.on('routes:changed', () => void reloadPatrol());
+    s.on('patrol:updated', (p: { patrol: PatrolReport }) => setPatrols((list) => [p.patrol, ...list.filter((x) => x.id !== p.patrol.id)].sort((a, b) => b.startedAt - a.startedAt)));
     return () => {
       clearInterval(it);
       s.disconnect();
     };
-  }, [token, load, reloadTeam, refreshIntel, intelSoon, onAuthLost, upsert]);
+  }, [token, load, reloadTeam, refreshIntel, intelSoon, onAuthLost, upsert, reloadPatrol]);
 
   // Poll only while the socket is down.
   useEffect(() => {
@@ -189,6 +211,18 @@ export function useLive(token: string, onAuthLost: () => void): Live {
     token,
     reloadTeam,
     refreshIntel,
+    routes,
+    patrols,
+    reloadPatrol,
+    saveRoute: async (route) => {
+      const r = await request<{ route: PatrolRoute }>('/api/routes', { method: 'POST', token, body: JSON.stringify(route) });
+      setRoutes((list) => [...list.filter((x) => x.id !== r.route.id), r.route]);
+      return r.route;
+    },
+    deleteRoute: async (id) => {
+      await request(`/api/routes/${id}`, { method: 'DELETE', token });
+      setRoutes((list) => list.filter((x) => x.id !== id));
+    },
     setStatus: async (id, status, note) => void (await post(`/api/violations/${id}/status`, { status, note })),
     bulkStatus: async (ids, status) => {
       const r = await request<{ updated: number }>('/api/violations/bulk-status', { method: 'POST', token, body: JSON.stringify({ ids, status }) });

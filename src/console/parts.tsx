@@ -13,8 +13,12 @@ import { NoticeSection } from './Notices';
 import {
   AREAS, CITY, EMIRATES, STATUSES, VIOLATION_TYPES, areaOf, duration, emirateOf, fmtDateTime, photoUrl, statusLabel, typeOf, type Device, type Hotspot, type Violation,
 } from '../lib/api';
-import { PlateChip, TypeIcon, severityChip } from '../lib/ui';
+import { PlateChip, TypeIcon, severityChip, useTheme } from '../lib/ui';
+import { mountBaseMap } from '../lib/basemap';
+import type { PatrolRoute } from '../lib/patrol';
 import type { EditChanges, Live } from './useLive';
+
+const NO_ROUTES: (PatrolRoute & { color: string; guardName?: string })[] = [];
 
 /* ── toast ─────────────────────────────────────────────────────────────── */
 const ToastCtx = createContext<(text: string, tone?: 'ok' | 'error') => void>(() => {});
@@ -145,10 +149,12 @@ export function MapView({
   fresh,
   onOpen,
   height = 340,
+  routes = NO_ROUTES,
 }: {
   violations?: Violation[];
   devices?: Device[];
   hotspots?: Hotspot[];
+  routes?: (PatrolRoute & { color: string; guardName?: string })[];
   focusId?: string | null;
   focusArea?: string | null;
   fresh?: Set<string>;
@@ -158,21 +164,58 @@ export function MapView({
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
+  const routeLayer = useRef<L.LayerGroup | null>(null);
   const fitted = useRef(false);
+  const theme = useTheme();
 
   useEffect(() => {
     if (!el.current || map.current) return;
-    map.current = L.map(el.current, { zoomControl: true, attributionControl: true }).setView([CITY.lat, CITY.lng], CITY.zoom);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map.current);
-    layer.current = L.layerGroup().addTo(map.current);
+    const m = L.map(el.current, { zoomControl: true, attributionControl: true, maxZoom: 18 }).setView([CITY.lat, CITY.lng], CITY.zoom);
+    map.current = m;
+    routeLayer.current = L.layerGroup().addTo(m);
+    layer.current = L.layerGroup().addTo(m);
     const ro = new ResizeObserver(() => map.current?.invalidateSize());
     ro.observe(el.current);
     return () => {
       ro.disconnect();
-      map.current?.remove();
+      m.remove();
       map.current = null;
     };
   }, []);
+
+  // The base map — the built-in offline street map when present (src/lib/basemap.ts), restyled with the theme.
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    let alive = true;
+    let base: { remove: () => void } | null = null;
+    void mountBaseMap(m, theme).then((b) => (alive ? (base = b) : b.remove()));
+    return () => {
+      alive = false;
+      base?.remove();
+    };
+  }, [theme]);
+
+  // Patrol routes (Field Team page): a line through the checkpoints, numbered in order.
+  useEffect(() => {
+    const g = routeLayer.current;
+    if (!g) return;
+    g.clearLayers();
+    for (const r of routes) {
+      const pts = r.checkpoints.map((c) => [c.lat, c.lng] as L.LatLngTuple);
+      if (!pts.length) continue;
+      L.polyline(r.loop && pts.length > 2 ? [...pts, pts[0]] : pts, { color: r.color, weight: 3, opacity: 0.85, dashArray: '6 6' })
+        .bindTooltip(`${r.name} · ${r.guardName ?? r.guardId}`)
+        .addTo(g);
+      r.checkpoints.forEach((c, i) =>
+        L.marker([c.lat, c.lng], {
+          icon: L.divIcon({ className: '', html: `<div class="c-cp-pin" style="--cp:${r.color}"><span>${i + 1}</span></div>`, iconSize: [22, 22], iconAnchor: [11, 11] }),
+        })
+          .bindTooltip(`${r.name} · ${i + 1}. ${c.label || 'Checkpoint'}`)
+          .addTo(g),
+      );
+    }
+  }, [routes]);
 
   useEffect(() => {
     if (!map.current || !layer.current) return;

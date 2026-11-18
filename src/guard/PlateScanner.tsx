@@ -13,10 +13,15 @@
  * and iPhone Safari / Home Screen app (iOS 14.3+). If the camera cannot be
  * opened (permission, old browser), the guard falls back to the phone's own
  * camera app via `onFallback`, which runs the still-photo reader instead.
+ *
+ * THE PHOTO NEVER WAITS FOR THE READER. "Photo only" takes the plate photo and
+ * returns at once; the shutter keeps the photo first and reads it after (with a
+ * time limit), and "Use photo" works while it reads. If the reader cannot start
+ * on this phone, the guard is told and simply takes the photo and types the plate.
  */
-import { useEffect, useRef, useState } from 'react';
-import { Camera, Check, Flashlight, FlashlightOff, Loader2, RotateCcw, ScanLine, X } from 'lucide-react';
-import { readFrame, readPlate, type PlateRead } from './offline/plateOcr';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Camera, Check, Flashlight, FlashlightOff, Image as ImageIcon, Loader2, RotateCcw, ScanLine, X } from 'lucide-react';
+import { readFrame, readPlate, ensureReader, getReaderState, subscribeReader, withTimeout, NO_READ, type PlateRead } from './offline/plateOcr';
 import { PlateChip } from '../lib/ui';
 
 export interface ScanResult extends PlateRead {
@@ -39,6 +44,14 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
   const [shooting, setShooting] = useState(false);
   const votes = useRef(new Map<string, { hits: number; weight: number; reads: number; conf: number; codes: Map<string, number>; emirate: string | null }>());
   const busy = useRef(false);
+  const reader = useSyncExternalStore(subscribeReader, getReaderState);
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState('');
+
+  // Start the reader alongside the camera (usually already warm from sign-in).
+  useEffect(() => {
+    void ensureReader().catch(() => {});
+  }, []);
 
   // Start the rear camera.
   useEffect(() => {
@@ -118,9 +131,9 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
     }
   }
 
-  // The read loop.
+  // The read loop — only once the reader is running.
   useEffect(() => {
-    if (state !== 'scanning') return;
+    if (state !== 'scanning' || reader !== 'ready') return;
     let alive = true;
     const tick = async () => {
       if (!alive || busy.current) return;
@@ -155,17 +168,43 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
       alive = false;
       clearInterval(id);
     };
-  }, [state]);
+  }, [state, reader]);
 
+  /** Shutter: keep the photo first, then try to read it — the guard can use the photo at any time. */
   async function shutter() {
+    setShooting(true);
+    let photo: Blob | null = null;
+    try {
+      photo = await frameBlob();
+    } finally {
+      setShooting(false);
+    }
+    if (!photo) return;
+    navigator.vibrate?.(40);
+    setLocked({ ...NO_READ(), photo });
+    setState('locked');
+    setReadNote('');
+    if (getReaderState() === 'failed') {
+      setReadNote('The plate reader is not available on this phone — use the photo and type the plate.');
+      return;
+    }
+    setReading(true);
+    try {
+      const r = await withTimeout(readPlate(photo), 20_000, 'Reading the plate');
+      setLocked((cur) => (cur && cur.photo === photo ? { ...r, photo } : cur));
+    } catch {
+      setReadNote('Could not read the plate here — use the photo and type the plate.');
+    } finally {
+      setReading(false);
+    }
+  }
+
+  /** Photo only: no reading at all. */
+  async function photoOnly() {
     setShooting(true);
     try {
       const photo = await frameBlob();
-      if (!photo) return;
-      const r = await readPlate(photo);
-      navigator.vibrate?.(40);
-      setLocked({ ...r, photo });
-      setState('locked');
+      if (photo) onResult({ ...NO_READ(), photo });
     } finally {
       setShooting(false);
     }
@@ -186,8 +225,19 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
     votes.current.clear();
     setSeen(null);
     setLocked(null);
+    setReadNote('');
+    setReading(false);
     setState('scanning');
   }
+
+  const hint =
+    reader === 'failed'
+      ? 'Plate reader not available on this phone — take the photo, then type the plate'
+      : reader !== 'ready'
+        ? 'Starting the plate reader… you can take the photo now'
+        : seen
+          ? null
+          : 'Fill the box with the plate, straight on';
 
   return (
     <div className="ps-wrap" role="dialog" aria-label="Scan number plate">
@@ -227,7 +277,13 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
         )}
         {state === 'scanning' && (
           <>
-            <div className="ps-hint">{seen ? <>Reading <b className="mono">{seen.number}</b> — hold steady…</> : 'Fill the box with the plate, straight on'}</div>
+            <div className="ps-hint">
+              {hint ?? (
+                <>
+                  Reading <b className="mono">{seen?.number}</b> — hold steady…
+                </>
+              )}
+            </div>
             <div className="ps-actions">
               <button className="ps-link" onClick={onFallback}>
                 <Camera size={16} /> Camera app
@@ -235,13 +291,21 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
               <button className="ps-shutter" onClick={() => void shutter()} aria-label="Take photo and read" disabled={shooting}>
                 {shooting ? <Loader2 size={26} className="spin" /> : <span />}
               </button>
-              <span className="ps-link ps-link-ghost">works offline</span>
+              <button className="ps-link" onClick={() => void photoOnly()} disabled={shooting}>
+                <ImageIcon size={16} /> Photo only
+              </button>
             </div>
           </>
         )}
         {state === 'locked' && locked && (
           <div className="ps-result">
-            {locked.number ? (
+            {reading ? (
+              <div className="ps-conf">
+                <Loader2 size={15} className="spin" style={{ verticalAlign: '-3px' }} /> Reading the plate… or use the photo now
+              </div>
+            ) : readNote ? (
+              <div className="ps-conf">{readNote}</div>
+            ) : locked.number ? (
               <>
                 <PlateChip plate={{ emirate: locked.emirate ?? 'AD', code: locked.code, number: locked.number, source: 'ocr' }} large />
                 <div className="ps-conf">{locked.verdict === 'read' ? 'Check it matches the plate in front of you' : 'Not sure of this reading — compare every character with the plate, or try again'}</div>
@@ -254,7 +318,7 @@ export default function PlateScanner({ onResult, onClose, onFallback }: { onResu
                 <RotateCcw size={18} /> Again
               </button>
               <button className="btn btn-primary btn-lg" onClick={() => onResult(locked)}>
-                <Check size={18} /> {locked.number ? (locked.verdict === 'read' ? 'Use plate' : 'Yes, use it') : 'Use photo'}
+                <Check size={18} /> {locked.number && !reading ? (locked.verdict === 'read' ? 'Use plate' : 'Yes, use it') : 'Use photo'}
               </button>
             </div>
           </div>

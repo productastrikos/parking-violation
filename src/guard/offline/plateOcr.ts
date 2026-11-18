@@ -38,35 +38,146 @@ export interface PlateRead {
   passes?: number;
 }
 
+/*
+ * STARTING THE READER — so it works offline on every phone.
+ *
+ * Tesseract runs in a web worker, and by default the WORKER fetches its own
+ * script, engine and English model. Whether those worker requests reach the
+ * offline copies is up to the platform: the service worker (web app) or the
+ * app's local files (Android app) reliably serve the PAGE, not always a worker.
+ * When a worker request fails offline, the reader never starts.
+ *
+ * So the PAGE fetches all three, the same URLs the offline cache and the app
+ * carry, and hands them over: the script and engine as blob: URLs, the model
+ * by placing it in the worker's own IndexedDB cache (key './eng.traineddata',
+ * store keyval-store/keyval — where tesseract.js looks before it fetches; it
+ * un-gzips what it finds). The worker then needs no network at all.
+ * If that path fails for an unforeseen reason, the original URL path is tried.
+ */
+const SIMD_TEST = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11]);
+const LANG_KEY = './eng.traineddata';
+const START_TIMEOUT = 30_000;
+const RETRY_AFTER = 20_000;
+
+export type ReaderState = 'idle' | 'starting' | 'ready' | 'failed';
+let readerState: ReaderState = 'idle';
+let readerError = '';
+const stateListeners = new Set<() => void>();
+function setReader(s: ReaderState, err = '') {
+  readerState = s;
+  readerError = err;
+  stateListeners.forEach((l) => l());
+}
+export const getReaderState = () => readerState;
+export const getReaderError = () => readerError;
+export function subscribeReader(l: () => void) {
+  stateListeners.add(l);
+  return () => void stateListeners.delete(l);
+}
+
+export function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${what} took too long`)), ms);
+    p.then(
+      (v) => (clearTimeout(t), resolve(v)),
+      (e) => (clearTimeout(t), reject(e)),
+    );
+  });
+}
+
+async function fetchOk(url: string) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} → ${r.status}`);
+  return r;
+}
+
+/** Put the English model where the worker looks first: its IndexedDB cache. */
+async function seedModelCache() {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const q = indexedDB.open('keyval-store');
+    q.onupgradeneeded = () => q.result.createObjectStore('keyval');
+    q.onsuccess = () => resolve(q.result);
+    q.onerror = () => reject(q.error);
+  });
+  try {
+    if (!db.objectStoreNames.contains('keyval')) return; // not the layout tesseract.js uses — let it fetch
+    const have = await new Promise<unknown>((resolve, reject) => {
+      const g = db.transaction('keyval').objectStore('keyval').get(LANG_KEY);
+      g.onsuccess = () => resolve(g.result);
+      g.onerror = () => reject(g.error);
+    });
+    if (have) return;
+    const model = new Uint8Array(await (await fetchOk('/ocr/eng.traineddata.gz')).arrayBuffer());
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('keyval', 'readwrite');
+      tx.objectStore('keyval').put(model, LANG_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function createReader(via: 'page' | 'worker'): Promise<Worker> {
+  const { createWorker, OEM } = await import('tesseract.js');
+  if (via === 'worker')
+    return createWorker('eng', OEM.LSTM_ONLY, { workerPath: '/ocr/worker.min.js', corePath: '/ocr/', langPath: '/ocr', gzip: true, workerBlobURL: false });
+  const core = WebAssembly.validate(SIMD_TEST) ? 'tesseract-core-simd-lstm.wasm.js' : 'tesseract-core-lstm.wasm.js';
+  const [script, engine] = await Promise.all([fetchOk('/ocr/worker.min.js').then((r) => r.blob()), fetchOk(`/ocr/${core}`).then((r) => r.blob())]);
+  await seedModelCache();
+  const scriptUrl = URL.createObjectURL(new Blob([script], { type: 'text/javascript' }));
+  const engineUrl = URL.createObjectURL(new Blob([engine], { type: 'text/javascript' }));
+  return createWorker('eng', OEM.LSTM_ONLY, {
+    workerPath: scriptUrl,
+    workerBlobURL: false,
+    corePath: `${engineUrl}#${core}`, // ends in "js", so tesseract imports it as is (the fragment is ignored)
+    langPath: `${window.location.origin}/ocr`, // only used if the cached model is missing
+    gzip: true,
+  });
+}
+
 let workerP: Promise<Worker> | null = null;
+let failedAt = 0;
 
 async function getWorker() {
-  workerP ||= (async () => {
-    const { createWorker, OEM } = await import('tesseract.js');
-    return createWorker('eng', OEM.LSTM_ONLY, {
-      workerPath: '/ocr/worker.min.js',
-      corePath: '/ocr/',
-      langPath: '/ocr',
-      gzip: true,
-      // A real URL (not a blob:) so the worker's own requests go through the service worker cache offline.
-      workerBlobURL: false,
-    });
-  })();
+  if (!workerP && failedAt && Date.now() - failedAt < RETRY_AFTER) throw new Error(readerError || 'Plate reader not available');
+  if (!workerP) {
+    setReader('starting');
+    workerP = (async () => {
+      try {
+        return await withTimeout(createReader('page'), START_TIMEOUT, 'Starting the plate reader');
+      } catch (e) {
+        console.warn('[plate] reader start (page path) failed:', (e as Error).message);
+        return await withTimeout(createReader('worker'), START_TIMEOUT, 'Starting the plate reader');
+      }
+    })();
+  }
   try {
-    return await workerP;
+    const w = await workerP;
+    if (readerState !== 'ready') setReader('ready');
+    failedAt = 0;
+    return w;
   } catch (e) {
-    workerP = null; // let the next attempt try again (e.g. assets not cached yet)
+    workerP = null; // try again later (e.g. files not cached yet)
+    failedAt = Date.now();
+    setReader('failed', (e as Error).message);
     throw e;
   }
 }
 
-/** Load the engine in the background (after sign-in) so the first read is quick. */
+/** Start the reader in the background (after sign-in) so the first read is quick. */
 export function warmUpOcr() {
   void getWorker().catch(() => {});
 }
 
+/** Resolves when the reader is ready; rejects if it cannot start on this phone. */
+export const ensureReader = () => getWorker().then(() => undefined);
+
 const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const NONE = (passes = 0): PlateRead => ({ code: '', number: '', emirate: null, raw: '', confidence: 0, verdict: 'none', passes });
+/** "Nothing read" — also what a photo taken without reading carries. */
+export const NO_READ = (): PlateRead => NONE();
 
 interface Sym {
   text: string;

@@ -46,6 +46,16 @@ async function derive(password: string, salt: Uint8Array<ArrayBuffer>, iteration
   return crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
 }
 
+/** Constant-time check of a password against a stored PBKDF2 verifier. */
+export async function passwordMatches(password: string, salt: string, verifier: string, iterations: number) {
+  const got = new Uint8Array(await derive(password, unb64(salt), iterations));
+  const want = unb64(verifier);
+  if (got.length !== want.length) return false;
+  let diff = 0;
+  for (let i = 0; i < got.length; i++) diff |= got[i] ^ want[i];
+  return diff === 0;
+}
+
 const credKey = (id: string) => `cred:${id.trim().toLowerCase()}`;
 
 export async function rememberCredential(password: string, user: User, token: string) {

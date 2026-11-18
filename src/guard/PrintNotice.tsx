@@ -8,12 +8,13 @@ import { Receipt, Bluetooth, BluetoothConnected, CheckCircle2, Image as ImageIco
 import { queueOp, updateRecord, type LocalRecord } from './offline/db';
 import { recordsChanged, syncNow, saveFines, useSyncStatus } from './offline/sync';
 import { useFines, FINE_EDITOR_ROLES, MAX_FINE } from '../lib/fines';
-import { VIOLATION_TYPES } from '../lib/api';
+import { VIOLATION_TYPES, NATIVE_APP } from '../lib/api';
 import { isIOS, uuid, deviceInfo, deviceLabel } from './offline/device';
 import { buildNotice, asCopy, renderNotice, specimenNotice, plateText, fmtAed, type Notice } from '../lib/notice';
 import {
-  usePrinter, setPrinter, resetPrinterText, layoutOf, methodInfo, METHODS, printCanvas, pairBluetooth, forgetBluetooth, useBtConnected, recommendedMethod, type PrintMethod,
+  usePrinter, setPrinter, resetPrinterText, layoutOf, methodInfo, METHODS, printCanvas, pairBluetooth, forgetBluetooth, useBtConnected, recommendedMethod, listPairedPrinters, choosePrinter, type PrintMethod,
 } from './print/printer';
+import type { PairedPrinter } from './print/nativePrinter';
 import { Sheet } from './Sheet';
 
 function usePreview(notice: Notice | null) {
@@ -63,33 +64,48 @@ export function PrintSheet({ rec, onClose, onSettings, onDone }: { rec: LocalRec
   const info = methodInfo(s.method);
   const name = `Notice-${rec.ref}`;
 
+  /** Accountability: every notice goes to the control room (queued offline like the record itself). */
+  async function logNotice(method: PrintMethod | 'electronic') {
+    const at = Date.now();
+    const dev = await deviceInfo();
+    await queueOp({
+      id: uuid(),
+      kind: 'notice',
+      violationId: rec.id,
+      guardId: rec.guardId,
+      reason: '',
+      createdAt: at,
+      state: 'pending',
+      notice: { at, copy: duplicate ? 'duplicate' : 'original', method, printer: method === 'bluetooth' ? s.btName : undefined, deviceId: dev.deviceId, deviceLabel: await deviceLabel(), notice },
+    });
+    await updateRecord(rec.id, { printedAt: at, printCount: (rec.printCount ?? 0) + 1, firstNotice: rec.firstNotice ?? notice });
+    recordsChanged();
+    void syncNow();
+    navigator.vibrate?.(30);
+  }
+
   async function run(method: PrintMethod) {
     if (!canvas) return;
     setJob({ state: 'busy' });
     try {
       const msg = await printCanvas(canvas, name, method, (f) => setJob({ state: 'busy', progress: f }));
-      // Accountability: every print goes to the control room (queued offline like the record itself).
-      const at = Date.now();
-      const dev = await deviceInfo();
-      await queueOp({
-        id: uuid(),
-        kind: 'notice',
-        violationId: rec.id,
-        guardId: rec.guardId,
-        reason: '',
-        createdAt: at,
-        state: 'pending',
-        notice: { at, copy: duplicate ? 'duplicate' : 'original', method, printer: method === 'bluetooth' ? s.btName : undefined, deviceId: dev.deviceId, deviceLabel: await deviceLabel(), notice },
-      });
-      await updateRecord(rec.id, { printedAt: at, printCount: (rec.printCount ?? 0) + 1, firstNotice: rec.firstNotice ?? notice });
-      recordsChanged();
-      void syncNow();
+      await logNotice(method);
       setJob({ state: 'ok', msg });
-      navigator.vibrate?.(30);
       if (method === 'bluetooth') onDone(msg);
     } catch (e) {
       const msg = errText(e);
       setJob(msg === 'Cancelled' ? { state: 'idle' } : { state: 'err', msg });
+    }
+  }
+
+  /** Issue the fine with no paper (no printer at hand) — the notice is recorded exactly as if printed. */
+  async function issueOnly() {
+    setJob({ state: 'busy' });
+    try {
+      await logNotice('electronic');
+      onDone(`Fine issued (${fmtAed(notice.fine)}) — no paper printed`);
+    } catch (e) {
+      setJob({ state: 'err', msg: errText(e) });
     }
   }
 
@@ -105,7 +121,7 @@ export function PrintSheet({ rec, onClose, onSettings, onDone }: { rec: LocalRec
         <Printer size={16} />
         <span>
           {info.label}
-          {s.method === 'bluetooth' && (s.btName ? ` · ${s.btName}${btOn ? ' (connected)' : ''}` : ' · not paired yet')} · {s.paper} mm
+          {s.method === 'bluetooth' && (s.btName ? ` · ${s.btName}${btOn ? ' (connected)' : ''}` : NATIVE_APP ? ' · no printer chosen' : ' · not paired yet')} · {s.paper} mm
         </span>
         <button className="btn btn-ghost btn-sm" onClick={onSettings}>
           <Settings size={14} /> Change
@@ -131,6 +147,11 @@ export function PrintSheet({ rec, onClose, onSettings, onDone }: { rec: LocalRec
         {job.state === 'busy' ? (job.progress != null ? `Printing… ${Math.round(job.progress * 100)}%` : 'Printing…') : job.state === 'ok' ? 'Print again' : duplicate ? 'Print duplicate' : 'Print notice'}
       </button>
       <div className="g-sheet-actions">
+        {!duplicate && (
+          <button className="btn" disabled={job.state === 'busy'} onClick={() => void issueOnly()}>
+            <Receipt size={15} /> Issue without printing
+          </button>
+        )}
         {s.method !== 'share' && (
           <button className="btn" disabled={!canvas || job.state === 'busy'} onClick={() => void run('share')}>
             <ImageIcon size={15} /> Share image
@@ -152,9 +173,21 @@ export function PrinterSettingsSection({ officerName, officerId }: { officerName
   const btOn = useBtConnected();
   const [job, setJob] = useState<Job>({ state: 'idle' });
   const [showText, setShowText] = useState(false);
+  const [paired, setPaired] = useState<PairedPrinter[] | null>(null);
   const fines = useFines();
   const testNotice = useMemo(() => specimenNotice(officerName, officerId, layoutOf(s)), [officerName, officerId, s, fines]);
   const { canvas } = usePreview(testNotice);
+
+  /** Android app: list the phone's paired Bluetooth devices to choose the printer from. */
+  async function loadPaired() {
+    setJob({ state: 'busy' });
+    try {
+      setPaired(await listPairedPrinters());
+      setJob({ state: 'idle' });
+    } catch (e) {
+      setJob({ state: 'err', msg: errText(e) });
+    }
+  }
 
   async function pair() {
     setJob({ state: 'busy' });
@@ -205,7 +238,59 @@ export function PrinterSettingsSection({ officerName, officerId }: { officerName
           })}
         </div>
 
-        {s.method === 'bluetooth' && methodInfo('bluetooth').available && (
+        {s.method === 'bluetooth' && NATIVE_APP && (
+          <>
+            <div className="n-row">
+              <div className="n-row-icon">
+                <Bluetooth size={18} />
+              </div>
+              <div className="n-row-main">
+                <div className="n-row-title">{s.btName ?? 'No printer chosen'}</div>
+                <div className="n-row-sub">{s.btName ? s.btId : 'Pair it in Android Settings → Bluetooth first (PIN is often 0000 or 1234)'}</div>
+              </div>
+              {s.btName && (
+                <button className="icon-btn" onClick={forgetBluetooth} aria-label="Forget printer">
+                  <Unplug size={17} />
+                </button>
+              )}
+              <button className="btn" onClick={() => void loadPaired()} disabled={job.state === 'busy'}>
+                {s.btName ? 'Change' : 'Choose printer'}
+              </button>
+            </div>
+            {paired && (
+              <div className="pn-methods" role="listbox" aria-label="Paired Bluetooth devices">
+                {paired.length === 0 && (
+                  <div className="g-note g-note-warn">
+                    <AlertTriangle size={15} /> No paired devices. Turn the printer on, pair it in Android Settings → Bluetooth, then tap Choose printer again.
+                  </div>
+                )}
+                {paired.map((p) => (
+                  <button
+                    key={p.address}
+                    role="option"
+                    aria-selected={s.btId === p.address}
+                    className={`pn-method${s.btId === p.address ? ' is-on' : ''}`}
+                    onClick={() => {
+                      choosePrinter(p);
+                      setPaired(null);
+                      setJob({ state: 'ok', msg: `Printer chosen: ${p.name}` });
+                    }}
+                  >
+                    <span className="pn-radio" aria-hidden />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span className="pn-method-title">{p.name}</span>
+                      <span className="pn-method-sub">
+                        {p.address}
+                        {p.printerLike ? '' : ' · not a printer?'}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {s.method === 'bluetooth' && !NATIVE_APP && methodInfo('bluetooth').available && (
           <div className="n-row">
             <div className="n-row-icon">{btOn ? <BluetoothConnected size={18} /> : <Bluetooth size={18} />}</div>
             <div className="n-row-main">
@@ -224,7 +309,7 @@ export function PrinterSettingsSection({ officerName, officerId }: { officerName
         )}
         {s.method === 'rawbt' && (
           <div className="g-note g-note-info" style={{ margin: '0 14px 14px' }}>
-            <Info size={15} /> Install <b>RawBT</b> from the Play Store, select your printer in it once, then print from here. If RawBT is missing, Android opens the Play Store.
+            <Info size={15} /> Install <b>RawBT</b> from the Play Store (while online), select your printer in it once, then print from here.
           </div>
         )}
         {s.method === 'share' && (

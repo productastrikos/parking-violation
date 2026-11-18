@@ -21,7 +21,8 @@ import { applyTheme } from './lib/ui';
 const GuardApp = lazy(() => import('./guard/GuardApp'));
 const ConsoleApp = lazy(() => import('./console/ConsoleApp'));
 
-const isGuardApp = /^\/app(\/|$)/i.test(window.location.pathname);
+// The installed Android app (VITE_NATIVE) is the guard app only.
+const isGuardApp = import.meta.env.VITE_NATIVE === '1' || /^\/app(\/|$)/i.test(window.location.pathname);
 applyTheme();
 
 createRoot(document.getElementById('root')!).render(

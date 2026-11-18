@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Park Patrol</string>
+    <string name="title_activity_main">Park Patrol</string>
+    <string name="package_name">xyz.astrikos.parkpatrol</string>
+    <string name="custom_url_scheme">xyz.astrikos.parkpatrol</string>
+</resources>

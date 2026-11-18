@@ -6,8 +6,14 @@
  *
  * The canvas is expected to be pure black-and-white already (notice.ts
  * thresholds it), at the printer's dot width: 384 dots (58 mm) or 576 (80 mm).
+ *
+ * Checked against the NETUM NT-1809 programmer manual (the guards' printer):
+ * ESC @, ESC a, ESC d and GS v 0 are supported (≤128 bytes wide, ≤4095 rows per
+ * command — we send 48 × 64). GS V (cut) is NOT in its command set and it has
+ * no cutter, so the cut is only sent when asked for (80 mm desk printers):
+ * an unknown command on a pocket printer can print as stray characters.
  */
-export function canvasToEscPos(canvas: HTMLCanvasElement, { feed = 4, cut = true } = {}): Uint8Array {
+export function canvasToEscPos(canvas: HTMLCanvasElement, { feed = 4, cut = false } = {}): Uint8Array {
   const w = canvas.width;
   const h = canvas.height;
   const rowBytes = Math.ceil(w / 8);

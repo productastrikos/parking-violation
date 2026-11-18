@@ -26,6 +26,7 @@
  */
 import http from 'node:http';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import express from 'express';
@@ -40,6 +41,13 @@ import { VIOLATION_TYPES, SEVERITIES, EMIRATES, AREAS, CITY, STATUSES, typeById,
 import { intelPack, fieldPack, plateKey } from '../shared/intel.js';
 
 const PORT = Number(process.env.PORT) || 4357;
+/* The laptop ("Hub") package: this one process also serves the built web app
+   (dashboard + guard app) from WEB_DIR, on the same port — no Vite, no nginx.
+   HOST=127.0.0.1 keeps it on this computer (no firewall prompt); OPEN_BROWSER
+   opens the dashboard once it is listening. */
+const WEB_DIR = process.env.WEB_DIR ? path.resolve(process.env.WEB_DIR) : null;
+const HOST = process.env.HOST || undefined;
+const OPEN_BROWSER = process.env.OPEN_BROWSER === '1';
 const CLOCK_SKEW_LIMIT = 2 * 60_000;
 const IDS = { typeIds: VIOLATION_TYPES.map((t) => t.id), areaIds: AREAS.map((a) => a.id), emirateIds: EMIRATES.map((e) => e.id) };
 
@@ -105,7 +113,7 @@ function fail(key) {
 }
 
 /* ── meta ───────────────────────────────────────────────────────────────── */
-app.get('/', (_req, res) => res.json({ service: 'park-patrol-api', status: 'ok', port: PORT }));
+if (!WEB_DIR) app.get('/', (_req, res) => res.json({ service: 'park-patrol-api', status: 'ok', port: PORT }));
 /* The phone's connectivity probe. `navigator.onLine` says "online" on any
    Wi-Fi, internet or not; only an answer from HERE means a sync can work. */
 app.get('/api/health', (_req, res) => {
@@ -186,6 +194,99 @@ app.post('/api/ai/plate-check/:id', requireUser, console_, async (req, res) => {
 const str = (v, max = 200) => String(v ?? '').trim().slice(0, max);
 const num = (v) => (v === null || v === undefined || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 
+/**
+ * Validate and store one violation from a phone — shared by the live upload
+ * (POST /api/violations) and the USB-cable import (POST /api/cable/import), so
+ * both treat a ticket exactly the same way. Throws httpError(400/422).
+ * Returns { violation, created }; a repeat of a stored id is not an error.
+ *   guard  the account that captured it (the signed-in phone user, or for a
+ *          cable import the guard named on the ticket)
+ *   via    'network' | 'cable'
+ */
+function ingestViolation({ input, files, guard, via = 'network', importedBy = null }) {
+  const id = str(input.id, 64);
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) throw store.httpError(400, 'Missing record id');
+
+  // Idempotency first: a repeat of a stored record is a success, not an error.
+  const existing = store.findViolation(id);
+  if (existing) return { violation: existing, created: false };
+
+  /* Validate on the server even though the app validates: retries, old app
+     versions and modified clients all post here directly. */
+  const type = typeById(input.type);
+  const errors = [];
+  if (!type) errors.push(`Unknown violation type "${input.type}"`);
+  const plateNumber = str(input.plate?.number, 12).toUpperCase().replace(/[^0-9]/g, '');
+  if (!plateNumber && !files.vehicle?.length) errors.push('A plate number or a vehicle photo is required');
+  if (type?.id === 'other' && str(input.notes).length < 3) errors.push('"Other" needs a short description in notes');
+  const capturedAtDevice = num(input.capturedAt);
+  if (!capturedAtDevice) errors.push('capturedAt is required');
+  const areaId = str(input.location?.areaId, 40);
+  if (areaId && !areaById(areaId)) errors.push(`Unknown area "${areaId}"`);
+  if (errors.length) throw store.httpError(422, errors.join('; '));
+
+  /* Phone clocks can be wrong. sentAt is the phone's clock at upload; the
+     difference to ours is that phone's error, applied to the capture time.
+     A cable import has no live sentAt, so its capture time is the phone's own. */
+  const receivedAt = Date.now();
+  const sentAt = num(input.sentAt) ?? receivedAt;
+  const skew = receivedAt - sentAt;
+  const capturedAt = Math.abs(skew) > CLOCK_SKEW_LIMIT ? capturedAtDevice + skew : capturedAtDevice;
+
+  const gps = input.location?.gps;
+  const photos = [];
+  if (files.vehicle?.[0]) photos.push({ kind: 'vehicle', url: `/uploads/${files.vehicle[0].filename}` });
+  if (files.plate?.[0]) photos.push({ kind: 'plate', url: `/uploads/${files.plate[0].filename}` });
+
+  const violation = {
+    id,
+    ref: str(input.ref, 40) || `PV-${id.slice(0, 8).toUpperCase()}`,
+    type: type.id,
+    severity: SEVERITIES.some((s) => s.id === input.severity) ? input.severity : type.severity,
+    plate: {
+      emirate: EMIRATES.some((e) => e.id === input.plate?.emirate) ? input.plate.emirate : 'AD',
+      code: str(input.plate?.code, 4).toUpperCase(),
+      number: plateNumber,
+      raw: str(input.plate?.raw, 40),
+      source: input.plate?.source === 'ocr' ? 'ocr' : 'manual',
+      confidence: num(input.plate?.confidence) ?? undefined,
+    },
+    location: {
+      areaId,
+      landmark: str(input.location?.landmark, 120),
+      gps:
+        gps && num(gps.lat) !== null && num(gps.lng) !== null
+          ? { lat: num(gps.lat), lng: num(gps.lng), accuracy: num(gps.accuracy), demo: Boolean(gps.demo) }
+          : null,
+    },
+    notes: str(input.notes, 600),
+    photos,
+    guardId: guard.id,
+    guardName: guard.name,
+    deviceId: str(input.deviceId, 64),
+    deviceLabel: str(input.deviceLabel, 60),
+    capturedAt,
+    capturedAtDevice,
+    capturedOffline: Boolean(input.capturedOffline),
+    receivedAt,
+    clockSkewMs: Math.abs(skew) > CLOCK_SKEW_LIMIT ? skew : 0,
+    ...(via === 'cable' ? { via: 'cable' } : {}),
+    status: 'new',
+    edits: [],
+    voided: false,
+    history: [
+      { at: capturedAt, by: guard.name, action: input.capturedOffline ? 'Captured on phone (offline)' : 'Captured on phone' },
+      via === 'cable'
+        ? { at: receivedAt, by: importedBy?.name ?? 'Laptop', action: 'Received over USB cable', note: `read from the ticket picture saved on ${str(input.deviceLabel, 60) || 'the phone'}` }
+        : { at: receivedAt, by: 'Server', action: 'Received and stored' },
+    ],
+  };
+
+  const out = store.insertViolation(violation);
+  store.audit('violation.create', importedBy ?? guard, { id: out.violation.id, ref: out.violation.ref, offline: out.violation.capturedOffline, via });
+  return out;
+}
+
 app.post(
   '/api/violations',
   requireUser,
@@ -200,100 +301,116 @@ app.post(
       discard();
       return res.status(400).json({ error: 'record must be JSON' });
     }
-
-    const id = str(input.id, 64);
-    if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) {
+    let out;
+    try {
+      out = ingestViolation({ input, files, guard: req.user, via: 'network' });
+    } catch (e) {
       discard();
-      return res.status(400).json({ error: 'Missing record id' });
+      return res.status(e.status || 500).json({ error: e.message });
     }
-
-    // Idempotency first: a repeat of a stored record is a success, not an error.
-    const existing = store.findViolation(id);
-    if (existing) {
+    const { violation: saved, created } = out;
+    if (!created) {
       discard();
-      return res.status(200).json({ violation: existing, duplicate: true });
+      return res.status(200).json({ violation: saved, duplicate: true });
     }
-
-    /* Validate on the server even though the app validates: retries, old app
-       versions and modified clients all post here directly. */
-    const type = typeById(input.type);
-    const errors = [];
-    if (!type) errors.push(`Unknown violation type "${input.type}"`);
-    const plateNumber = str(input.plate?.number, 12).toUpperCase().replace(/[^0-9]/g, '');
-    if (!plateNumber && !files.vehicle?.length) errors.push('A plate number or a vehicle photo is required');
-    if (type?.id === 'other' && str(input.notes).length < 3) errors.push('"Other" needs a short description in notes');
-    const capturedAtDevice = num(input.capturedAt);
-    if (!capturedAtDevice) errors.push('capturedAt is required');
-    const areaId = str(input.location?.areaId, 40);
-    if (areaId && !areaById(areaId)) errors.push(`Unknown area "${areaId}"`);
-    if (errors.length) {
-      discard();
-      return res.status(422).json({ error: errors.join('; ') });
-    }
-
-    /* Phone clocks can be wrong. sentAt is the phone's clock at upload; the
-       difference to ours is that phone's error, applied to the capture time. */
-    const receivedAt = Date.now();
-    const sentAt = num(input.sentAt) ?? receivedAt;
-    const skew = receivedAt - sentAt;
-    const capturedAt = Math.abs(skew) > CLOCK_SKEW_LIMIT ? capturedAtDevice + skew : capturedAtDevice;
-
-    const gps = input.location?.gps;
-    const photos = [];
-    if (files.vehicle?.[0]) photos.push({ kind: 'vehicle', url: `/uploads/${files.vehicle[0].filename}` });
-    if (files.plate?.[0]) photos.push({ kind: 'plate', url: `/uploads/${files.plate[0].filename}` });
-
-    const violation = {
-      id,
-      ref: str(input.ref, 40) || `PV-${id.slice(0, 8).toUpperCase()}`,
-      type: type.id,
-      severity: SEVERITIES.some((s) => s.id === input.severity) ? input.severity : type.severity,
-      plate: {
-        emirate: EMIRATES.some((e) => e.id === input.plate?.emirate) ? input.plate.emirate : 'AD',
-        code: str(input.plate?.code, 4).toUpperCase(),
-        number: plateNumber,
-        raw: str(input.plate?.raw, 40),
-        source: input.plate?.source === 'ocr' ? 'ocr' : 'manual',
-        confidence: num(input.plate?.confidence) ?? undefined,
-      },
-      location: {
-        areaId,
-        landmark: str(input.location?.landmark, 120),
-        gps:
-          gps && num(gps.lat) !== null && num(gps.lng) !== null
-            ? { lat: num(gps.lat), lng: num(gps.lng), accuracy: num(gps.accuracy), demo: Boolean(gps.demo) }
-            : null,
-      },
-      notes: str(input.notes, 600),
-      photos,
-      guardId: req.user.id,
-      guardName: req.user.name,
-      deviceId: str(input.deviceId, 64),
-      deviceLabel: str(input.deviceLabel, 60),
-      capturedAt,
-      capturedAtDevice,
-      capturedOffline: Boolean(input.capturedOffline),
-      receivedAt,
-      clockSkewMs: Math.abs(skew) > CLOCK_SKEW_LIMIT ? skew : 0,
-      status: 'new',
-      edits: [],
-      voided: false,
-      history: [
-        { at: capturedAt, by: req.user.name, action: input.capturedOffline ? 'Captured on phone (offline)' : 'Captured on phone' },
-        { at: receivedAt, by: 'Server', action: 'Received and stored' },
-      ],
-    };
-
-    const { violation: saved, created } = store.insertViolation(violation);
-    if (!created) discard();
-    store.audit('violation.create', req.user, { id: saved.id, ref: saved.ref, offline: saved.capturedOffline });
     if (saved.deviceId) {
-      const d = store.touchDevice(saved.deviceId, { lastSync: receivedAt });
+      const d = store.touchDevice(saved.deviceId, { lastSync: saved.receivedAt });
       io.to('console').emit('device:status', { device: d });
     }
     io.to('console').emit('violation:created', { violation: saved, stats: store.stats() });
-    res.status(created ? 201 : 200).json({ violation: saved, duplicate: !created });
-    if (created) runPlateCheck(saved);
+    res.status(201).json({ violation: saved, duplicate: false });
+    runPlateCheck(saved);
+  },
+);
+
+/* ── USB-cable handover (no network) ─────────────────────────────────────────
+   The phone saved the ticket as a picture; the laptop's dashboard read it off
+   the phone over the cable, decoded its QR code and cropped the photos back out
+   (src/console/CableImport.tsx). It posts here as the signed-in supervisor.
+   The fine travels with the ticket and is logged once, under the phone's own
+   op id — so a later network upload of the same notice is not counted twice. */
+app.post(
+  '/api/cable/import',
+  requireUser,
+  console_,
+  upload.fields([{ name: 'vehicle', maxCount: 1 }, { name: 'plate', maxCount: 1 }]),
+  (req, res) => {
+    const files = req.files ?? {};
+    const discard = () => Object.values(files).flat().forEach((f) => fs.rm(f.path, { force: true }, () => {}));
+    let p;
+    try {
+      p = JSON.parse(req.body?.payload ?? '{}');
+    } catch {
+      discard();
+      return res.status(400).json({ error: 'payload must be JSON' });
+    }
+    if (p?.t !== 'PPCABLE1' || !p.rec) {
+      discard();
+      return res.status(400).json({ error: 'Not a Park Patrol ticket picture' });
+    }
+    const rec = p.rec;
+    // The guard named on the ticket. A phone from another deployment may carry a guard this laptop does not know — keep the ticket, say so.
+    const known = store.findUser(rec.guardId);
+    const guard = known ?? { id: str(rec.guardId, 40).toLowerCase() || 'unknown', name: str(rec.guardName, 80) || 'Unknown guard', role: 'guard' };
+
+    let out;
+    try {
+      const { sentAt: _ignored, ...input } = rec;
+      out = ingestViolation({ input, files, guard, via: 'cable', importedBy: req.user });
+    } catch (e) {
+      discard();
+      return res.status(e.status || 500).json({ error: e.message });
+    }
+    let { violation: v } = out;
+    const { created } = out;
+    let repaired = 0;
+    if (!created) {
+      // Already here. If its photo files went missing on this laptop (data folder lost or cleaned),
+      // the same picture brings them back; otherwise the new copies are not needed.
+      const onDisk = (p) => fs.existsSync(path.join(store.UPLOAD_DIR, path.basename(p.url)));
+      const photos = [...(v.photos ?? [])];
+      for (const kind of ['vehicle', 'plate']) {
+        const f = files[kind]?.[0];
+        if (!f) continue;
+        const cur = photos.findIndex((p) => p.kind === kind);
+        if (cur === -1 || !onDisk(photos[cur])) {
+          const entry = { kind, url: `/uploads/${f.filename}` };
+          if (cur === -1) photos.push(entry);
+          else photos[cur] = entry;
+          repaired += 1;
+          f.keep = true;
+        }
+      }
+      for (const f of Object.values(files).flat()) if (!f.keep) fs.rm(f.path, { force: true }, () => {});
+      if (repaired) v = store.setPhotos(v.id, photos) ?? v;
+    }
+
+    let fine = null;
+    if (p.fine?.notice) {
+      const already = (v.notices ?? []).some((n) => n.id === p.fine.opId);
+      try {
+        v = store.recordNoticePrint(
+          v.id,
+          { opId: p.fine.opId, at: p.fine.at, method: p.fine.method, printer: p.fine.printer, deviceId: rec.deviceId, deviceLabel: rec.deviceLabel, notice: p.fine.notice },
+          guard,
+          'app',
+        );
+        fine = { amount: p.fine.notice.fine ?? null, logged: !already };
+      } catch (e) {
+        fine = { amount: p.fine.notice.fine ?? null, logged: false, error: e.message };
+      }
+    }
+
+    if (rec.deviceId) {
+      const patch = { lastSync: Date.now(), lastCable: Date.now(), userId: guard.id, userName: guard.name };
+      if (str(rec.deviceLabel, 60)) patch.label = str(rec.deviceLabel, 60);
+      const d = store.touchDevice(str(rec.deviceId, 64), patch);
+      io.to('console').emit('device:status', { device: d });
+    }
+    if (created) io.to('console').emit('violation:created', { violation: v, stats: store.stats() });
+    else if (fine?.logged || repaired) emitUpdated(v);
+    res.status(created ? 201 : 200).json({ violation: v, created, duplicate: !created, fine, guardKnown: Boolean(known), photosRestored: repaired });
+    if (created) runPlateCheck(v);
   },
 );
 
@@ -395,6 +512,44 @@ app.put('/api/fines', requireUser, console_, (req, res) => {
   res.json(f);
 });
 
+/* ── patrol routes (dashboard) and patrol reports (phones) ─────────────────
+   Routes reach an offline phone as a QR code shown on the dashboard; online
+   phones also get theirs in the field pack. Reports come back over the USB
+   cable (a picture, POST /api/cable/patrol) or, online, straight here. */
+const routesChanged = (guardId) => {
+  io.to('console').emit('routes:changed', {});
+  if (guardId) io.to(`guard:${guardId}`).emit('mine:changed', {});
+};
+app.get('/api/routes', requireUser, console_, (_req, res) => res.json({ routes: store.routes() }));
+app.post('/api/routes', requireUser, console_, (req, res) => {
+  const before = store.routes().find((r) => r.id === req.body?.id);
+  const route = store.saveRoute(req.body ?? {}, req.user);
+  routesChanged(route.guardId);
+  if (before && before.guardId !== route.guardId) routesChanged(before.guardId);
+  res.json({ route });
+});
+app.delete('/api/routes/:id', requireUser, console_, (req, res) => {
+  const route = store.deleteRoute(req.params.id, req.user);
+  routesChanged(route.guardId);
+  res.json({ ok: true });
+});
+app.get('/api/patrols', requireUser, console_, (req, res) => res.json({ patrols: store.patrols(Math.min(60, Number(req.query.days) || 7)) }));
+app.post('/api/patrols', requireUser, (req, res) => {
+  const rep = req.body ?? {};
+  // A guard's phone reports for that guard only.
+  const own = req.user.role === 'guard' ? { guardId: req.user.id, guardName: req.user.name } : {};
+  const out = store.upsertPatrol({ ...rep, ...own }, 'network', req.user);
+  io.to('console').emit('patrol:updated', { patrol: out.patrol });
+  res.status(out.created ? 201 : 200).json(out);
+});
+app.post('/api/cable/patrol', requireUser, console_, (req, res) => {
+  const p = req.body ?? {};
+  if (p.t !== 'PPPATROL1' || !p.rep) return res.status(400).json({ error: 'Not a Park Patrol patrol-report picture' });
+  const out = store.upsertPatrol(p.rep, 'cable', req.user);
+  io.to('console').emit('patrol:updated', { patrol: out.patrol });
+  res.status(out.created ? 201 : 200).json(out);
+});
+
 app.get('/api/stats', requireUser, console_, (_req, res) => res.json(store.stats()));
 app.get('/api/devices', requireUser, console_, (_req, res) => res.json({ devices: store.devices() }));
 
@@ -432,7 +587,8 @@ app.get('/api/intel/field', requireUser, (req, res) => {
     .violations()
     .filter((v) => v.guardId === req.user.id && v.receivedAt >= since)
     .map((v) => ({ id: v.id, status: v.status, voided: v.voided, voidReason: v.voidReason, correction: v.correction ?? null, edited: (v.edits?.length ?? 0) > 0, plate: v.plate, type: v.type }));
-  res.json({ ...fieldPack({ violations: store.violations() }, req.user), mine, fines: store.fines(10) });
+  const routes = store.routes().filter((r) => r.guardId === req.user.id && r.active);
+  res.json({ ...fieldPack({ violations: store.violations() }, req.user), mine, fines: store.fines(10), routes, serverTime: Date.now() });
 });
 
 /* The written brief. The model only words what the engine computed — every number comes from the pack. */
@@ -474,6 +630,27 @@ app.patch('/api/team/:id', requireUser, console_, (req, res) => {
   io.to('console').emit('team:changed', {});
   res.json({ user: store.publicUser(user) });
 });
+
+/* ── the web app (laptop / Hub package) ─────────────────────────────────────
+   Hashed build files are cached for good; index.html, the service worker and
+   version.json are always revalidated, so a new package shows up at once. Any
+   other GET that is not the API falls back to index.html (it picks the
+   dashboard or the guard app from the path). */
+if (WEB_DIR && fs.existsSync(path.join(WEB_DIR, 'index.html'))) {
+  app.use(
+    express.static(WEB_DIR, {
+      index: false,
+      setHeaders: (res, file) => {
+        const rel = path.relative(WEB_DIR, file).replace(/\\/g, '/');
+        res.set('Cache-Control', rel.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    }),
+  );
+  app.get(/^\/(?!api\/|uploads\/|socket\.io\/).*/, (_req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(path.join(WEB_DIR, 'index.html'));
+  });
+} else if (WEB_DIR) console.warn(`[web] WEB_DIR has no index.html (${WEB_DIR}) — build the web app first`);
 
 /* ── errors ─────────────────────────────────────────────────────────────── */
 app.use((err, _req, res, _next) => {
@@ -547,17 +724,46 @@ io.on('connection', (socket) => {
   });
 });
 
+const HUB_URL = `http://localhost:${PORT}`;
+function openBrowser(url) {
+  try {
+    const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', url]] : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+    spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true, windowsVerbatimArguments: process.platform === 'win32' }).unref();
+  } catch {
+    /* no browser to open — the URL is printed */
+  }
+}
+
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
+    if (OPEN_BROWSER) {
+      // Started twice (double-clicked again): the first copy is serving — just show it.
+      console.log(`\n  Park Patrol is already running — opening ${HUB_URL}\n`);
+      openBrowser(HUB_URL);
+      setTimeout(() => process.exit(0), 1500);
+      return;
+    }
     console.error(`\n  Port ${PORT} is already in use — an older API is probably still running.\n  Run \`npm run preflight\` (or stop that process) and start again.\n`);
     process.exit(1);
   }
   throw err;
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   const ai = llmStatus();
   console.log(`[api] Park Patrol API + Socket.IO on :${PORT} · AI: ${ai.ready ? `${ai.label} (${ai.model}${ai.vision ? `, vision ${ai.visionModel}` : ''})` : 'rules only (no LLM configured)'}`);
+  if (WEB_DIR) {
+    // Plain ASCII: older Windows console fonts cannot draw box characters.
+    const line = `  +${'-'.repeat(58)}+`;
+    const row = (t) => console.log(`  |  ${t.padEnd(56)}|`);
+    console.log(`\n${line}`);
+    row('Park Patrol laptop is running - no internet needed.');
+    row(`Dashboard: ${HUB_URL}`);
+    row('Sign in:   supervisor / Astrikos2026');
+    row('Keep this window open. Close it to stop Park Patrol.');
+    console.log(`${line}\n`);
+  }
+  if (OPEN_BROWSER) openBrowser(HUB_URL);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {

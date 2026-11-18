@@ -27,6 +27,7 @@ import DashboardPage from './DashboardPage';
 import ViolationsPage, { type ViolationQuery } from './ViolationsPage';
 import AdvisoryPage from './AdvisoryPage';
 import TeamPage from './TeamPage';
+import { CableImport } from './CableImport';
 import './console.css';
 
 interface ConsoleSession {
@@ -52,6 +53,8 @@ export interface Nav {
   openRecord: (id: string, edit?: boolean) => void;
   focusArea: (areaId: string) => void;
   runAdvisory: (a: Advisory) => void;
+  /** Open "Receive from phone — USB cable". */
+  receiveByCable: () => void;
 }
 
 export default function ConsoleApp() {
@@ -106,6 +109,7 @@ function Shell({ session, onSignOut }: { session: ConsoleSession; onSignOut: () 
   });
   const [mobileNav, setMobileNav] = useState(false);
   const [advOpen, setAdvOpen] = useState(false);
+  const [cableOpen, setCableOpen] = useState(false);
   const [newBuild, setNewBuild] = useState(false);
   const theme = useTheme();
 
@@ -156,6 +160,7 @@ function Shell({ session, onSignOut }: { session: ConsoleSession; onSignOut: () 
           go('advisory');
         } else if (c.action === 'open-team') go('team');
       },
+      receiveByCable: () => setCableOpen(true),
     }),
     [go],
   );
@@ -285,12 +290,22 @@ function Shell({ session, onSignOut }: { session: ConsoleSession; onSignOut: () 
           ) : page === 'advisory' ? (
             <AdvisoryPage live={live} nav={nav} focusArea={area} />
           ) : (
-            <TeamPage live={live} token={session.token} me={session.user} />
+            <TeamPage live={live} token={session.token} me={session.user} onCable={() => setCableOpen(true)} />
           )}
         </main>
       </div>
 
       {drawer && drawerRecord && <ViolationDrawer key={drawer.id + String(drawer.edit)} v={drawerRecord} live={live} startInEdit={drawer.edit} onClose={() => setDrawer(null)} />}
+      {cableOpen && (
+        <CableImport
+          token={session.token}
+          onClose={() => setCableOpen(false)}
+          onOpen={(id) => {
+            setCableOpen(false);
+            setDrawer({ id, edit: false });
+          }}
+        />
+      )}
     </div>
   );
 }

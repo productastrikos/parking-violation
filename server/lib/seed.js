@@ -82,6 +82,47 @@ const LANDMARKS = {
 };
 
 /** Repeat offenders: these plates come back again and again. */
+/**
+ * Sample patrol routes, so the Field Team page and the guard app have something
+ * to show on first run. Supervisors edit or replace them on the dashboard.
+ * Checkpoints are loops around each guard's patrol area.
+ */
+export function buildSeedRoutes(now = Date.now()) {
+  const route = (id, name, guardId, areaId, pts, start, end) => ({
+    id,
+    name,
+    guardId,
+    areaId,
+    checkpoints: pts.map(([lat, lng, label], i) => ({ id: `${id}-${i}`, lat, lng, label })),
+    loop: true,
+    days: [0, 1, 2, 3, 4, 5, 6],
+    start,
+    end,
+    radiusM: 40,
+    active: true,
+    updatedAt: now,
+    updatedBy: 'Sample data',
+    seeded: true,
+  });
+  return [
+    route('rt-markaziyah-a', 'Al Markaziyah loop', 'guard1', 'markaziyah', [
+      [24.4905, 54.357, 'North-west corner'],
+      [24.4925, 54.3615, 'North side, mid-block'],
+      [24.4905, 54.366, 'North-east corner'],
+      [24.487, 54.365, 'East side'],
+      [24.4855, 54.3605, 'South side, mid-block'],
+      [24.487, 54.3565, 'West side'],
+    ], '07:00', '15:00'),
+    route('rt-reem-a', 'Al Reem Island loop', 'guard2', 'reem', [
+      [24.501, 54.4005, 'West entrance'],
+      [24.503, 54.405, 'North towers'],
+      [24.5005, 54.4095, 'East promenade'],
+      [24.4975, 54.407, 'South car parks'],
+      [24.497, 54.402, 'South-west corner'],
+    ], '15:00', '23:00'),
+  ];
+}
+
 const OFFENDERS = [
   { emirate: 'AD', code: '5', number: '72814', times: 5 },
   { emirate: 'DXB', code: 'K', number: '30917', times: 4 },

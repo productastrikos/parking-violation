@@ -25,6 +25,8 @@ export const METHOD_LABEL: Record<string, string> = {
   share: 'Shared to printer app',
   system: 'System print / AirPrint',
   browser: 'Office printer (browser)',
+  electronic: 'Issued without printing',
+  unknown: 'Issued on the phone',
 };
 const COPY_LABEL = { original: 'Original', duplicate: 'Duplicate', office: 'Office copy' } as const;
 

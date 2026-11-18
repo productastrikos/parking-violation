@@ -29,7 +29,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { API_URL, SOCKET_URL, APP_VERSION, type Violation } from '../../lib/api';
+import { API_URL, SOCKET_URL, APP_VERSION, CABLE_ONLY, type Violation } from '../../lib/api';
 import { setFines, type FineSchedule } from '../../lib/fines';
 import { allRecords, photosFor, markSynced, updateRecord, getRecord, type LocalRecord } from './db';
 import { credentialFor, invalidateToken, getSession } from './offlineAuth';
@@ -37,6 +37,7 @@ import { deviceInfo, deviceLabel, platformLabel } from './device';
 import { pendingOps, updateOp, applyServerState, kvGet, kvSet } from './db';
 import { currentPosition } from './location';
 import type { FieldPack } from '../../lib/api';
+import { adoptServerRoutes, reportsToUpload, markUploaded } from '../patrol/patrolStore';
 
 export interface SyncStatus {
   online: boolean | null; // null = not checked yet
@@ -101,6 +102,11 @@ async function refreshCounts() {
 /* ── connectivity probe ─────────────────────────────────────────────────── */
 let lastKick = 0;
 export async function probe(): Promise<boolean> {
+  // Cable-only app: there is no server to reach, and the app never tries.
+  if (CABLE_ONLY) {
+    set({ online: false, checkedAt: Date.now() });
+    return false;
+  }
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 3500);
   try {
@@ -147,6 +153,7 @@ async function runOnce() {
   if (!(await probe())) return;
   if (!queue.length) {
     await sendOps();
+    await sendPatrols();
     await refreshFieldPack();
     return;
   }
@@ -168,7 +175,25 @@ async function runOnce() {
     recordsChanged();
   }
   await sendOps();
+  await sendPatrols();
   await refreshFieldPack(true);
+}
+
+/* ── patrol reports (online phones; offline ones hand them over by cable) ── */
+async function sendPatrols() {
+  for (const r of await reportsToUpload()) {
+    const cred = await credentialFor(r.guardId);
+    if (!cred?.token) continue;
+    const { updatedAt: _u, cableExportedAt: _c, uploadedAt: _p, ...report } = r;
+    try {
+      const res = await fetch(`${API_URL}/api/patrols`, { method: 'POST', headers: { Authorization: `Bearer ${cred.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(report) });
+      if (res.ok) await markUploaded(r.id, Date.now());
+      else if (res.status === 401) await invalidateToken(r.guardId);
+      else if (res.status >= 500) return;
+    } catch {
+      return; // offline again — next trigger
+    }
+  }
 }
 
 /* ── ops: mistake reports for records already on the server ─────────────── */
@@ -232,6 +257,7 @@ export const useSyncStatus = () => useSyncExternalStore(subscribe, getStatus);
 
 export async function saveFines(changes: Record<string, number | null>, reason: string): Promise<FineSchedule> {
   const session = await getSession();
+  if (CABLE_ONLY) throw new Error('Fines are changed on the laptop dashboard in this app');
   const cred = session && (await credentialFor(session.user.id));
   if (!cred?.token) throw new Error('Sign in online to change fines');
   let res: Response;
@@ -247,6 +273,7 @@ export async function saveFines(changes: Record<string, number | null>, reason: 
 }
 
 export async function refreshFieldPack(force = false) {
+  if (CABLE_ONLY) return;
   if (!force && Date.now() - packFetchedAt < 60_000) return;
   const session = await getSession();
   if (!session) return;
@@ -260,6 +287,7 @@ export async function refreshFieldPack(force = false) {
     pack = p;
     setFines(p.fines);
     await kvSet('fieldPack', p);
+    await adoptServerRoutes(session.user.id, p.routes);
     packListeners.forEach((l) => l());
     if (await applyServerState(p.mine)) recordsChanged();
   } catch {
@@ -350,6 +378,7 @@ async function sendHello() {
 }
 
 export async function connectSocket() {
+  if (CABLE_ONLY) return;
   const session = await getSession();
   if (!session) return;
   const cred = await credentialFor(session.user.id);

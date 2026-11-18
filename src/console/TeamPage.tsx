@@ -8,13 +8,14 @@
  * queued on their phone stays on the phone).
  */
 import { useMemo, useState } from 'react';
-import { KeyRound, Loader2, Power, Smartphone, UserPlus, X, AlertTriangle, Search } from 'lucide-react';
+import { KeyRound, Loader2, Power, Smartphone, UserPlus, X, AlertTriangle, Search, Usb } from 'lucide-react';
 import { request, ApiError, AREAS, areaOf, ago, type TeamRow, type User } from '../lib/api';
 import { useNow } from '../lib/ui';
 import type { Live } from './useLive';
 import { MapView } from './parts';
+import { PatrolRoutesCard, colorOf } from './PatrolRoutes';
 
-export default function TeamPage({ live, token, me }: { live: Live; token: string; me: User }) {
+export default function TeamPage({ live, token, me, onCable }: { live: Live; token: string; me: User; onCable: () => void }) {
   const now = useNow(20_000);
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState('');
@@ -28,6 +29,10 @@ export default function TeamPage({ live, token, me }: { live: Live; token: strin
       .sort((a, b) => Number(b.online) - Number(a.online) || order[a.role] - order[b.role] || a.name.localeCompare(b.name));
   }, [live.team, q]);
   const guards = live.team.filter((r) => r.role === 'guard');
+  const mapRoutes = useMemo(
+    () => live.routes.filter((r) => r.active).map((r) => ({ ...r, color: colorOf(live.routes, r.id), guardName: live.team.find((t) => t.id === r.guardId)?.name })),
+    [live.routes, live.team],
+  );
 
   async function toggleActive(r: TeamRow) {
     try {
@@ -81,9 +86,9 @@ export default function TeamPage({ live, token, me }: { live: Live; token: strin
       <section className="card" style={{ marginBottom: 16 }}>
         <div className="card-head">
           <div>
-            <h3>Live positions</h3>
+            <h3>Map — patrol routes and positions</h3>
             <div className="faint" style={{ fontSize: 12 }}>
-              Sent by each guard's phone every 15 s while the app is open
+              Routes as set below · positions sent by each guard's phone every 15 s while it is online
               {live.devices.some((d) => d.position?.demo) ? ' · positions marked DEMO come from the demo GPS inside the guard’s patrol area' : ''}
             </div>
           </div>
@@ -91,8 +96,10 @@ export default function TeamPage({ live, token, me }: { live: Live; token: strin
             {live.devices.filter((d) => d.position).length} on the map
           </span>
         </div>
-        <MapView devices={live.devices} height={300} />
+        <MapView devices={live.devices} height={340} routes={mapRoutes} />
       </section>
+
+      <PatrolRoutesCard live={live} />
 
       <section className="card">
         <div className="card-head">
@@ -107,6 +114,9 @@ export default function TeamPage({ live, token, me }: { live: Live; token: strin
               <Search size={14} />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, id, area" />
             </div>
+            <button className="btn btn-sm" onClick={onCable} title="Import tickets from a phone connected by USB cable — no network needed">
+              <Usb size={15} /> Receive from phone
+            </button>
             <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
               <UserPlus size={15} /> Add guard
             </button>

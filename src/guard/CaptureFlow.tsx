@@ -17,12 +17,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowLeft, Camera, CheckCircle2, Crosshair, Loader2, MapPin, RefreshCw, ScanLine, Save, AlertTriangle, Clock, History, Siren, FlaskConical, RotateCcw } from 'lucide-react';
-import { VIOLATION_TYPES, AREAS, EMIRATES, typeOf, areaOf, fmtDateTime, fmtTime, type User, type Severity } from '../lib/api';
+import { VIOLATION_TYPES, AREAS, EMIRATES, CABLE_ONLY, typeOf, areaOf, fmtDateTime, fmtTime, type User, type Severity } from '../lib/api';
 import { TypeIcon } from '../lib/ui';
 import { saveRecord, replaceUnsynced, nextSeq, photosFor, allRecords, getDraft, saveDraft, clearDraft, type LocalRecord } from './offline/db';
 import { deviceInfo, deviceLabel, uuid } from './offline/device';
 import { processPhoto } from './offline/photo';
-import { readPlate, type PlateRead } from './offline/plateOcr';
+import { readPlate, withTimeout, type PlateRead } from './offline/plateOcr';
 import { getStatus, getFieldPack, subscribePack } from './offline/sync';
 import { useGps, setGpsMode } from './offline/location';
 import { plateHistory, plateKey } from '../../shared/intel.js';
@@ -155,12 +155,13 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
   const runOcr = useCallback(async (file: Blob) => {
     setOcr({ state: 'reading' });
     try {
-      const r = await readPlate(file);
+      // The photo is already kept; the read has a time limit so the form never waits on it.
+      const r = await withTimeout(readPlate(file), 25_000, 'Reading the plate');
       if (r.verdict === 'read') applyPlate(r);
       else if (r.verdict === 'unsure') setOcr({ state: 'suggest', s: r });
-      else setOcr({ state: 'failed', msg: 'No plate number found in that photo — type it below, or scan again closer and straight on' });
+      else setOcr({ state: 'failed', msg: 'No plate number found in that photo — type it below, or save without it (the plate photo goes with the ticket)' });
     } catch {
-      setOcr({ state: 'failed', msg: 'Plate reader is not available on this phone right now — type the plate' });
+      setOcr({ state: 'failed', msg: 'The plate reader could not read it on this phone — type the plate, or save without it (the plate photo goes with the ticket)' });
     }
   }, [applyPlate]);
 
@@ -183,7 +184,7 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
     setPlateShot(shotOf(r.photo));
     // The guard saw the reading next to the live plate and tapped "Use" — that is the confirmation.
     if (r.number) applyPlate(r);
-    else setOcr({ state: 'failed', msg: 'No plate number read — type it below' });
+    else setOcr({ state: 'failed', msg: 'Plate photo taken, no number read — type it below, or save without it' });
   }
 
   const capturedAt = editing?.capturedAt ?? vehicle?.at ?? openedAt;
@@ -195,7 +196,8 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
   async function save() {
     setError(null);
     if (!vehicle) return setError('Take a photo of the vehicle first');
-    if (!number && !code) return setError('Enter the plate number (or scan it)');
+    // A plate photo is enough when the number cannot be read or typed — the control room reads it from the photo.
+    if (!number && !code && !plateShot) return setError('Type the plate number, or take a photo of the plate');
     if (!type) return setError('Choose what the violation is');
     if (type === 'other' && notes.trim().length < 3) return setError('For "Other", describe the violation in the notes');
     if (!areaId && gps.state !== 'fixed') return setError('Choose the area — there is no GPS fix');
@@ -392,6 +394,11 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
               }}
             />
           </div>
+          {plateShot && !number && !code && ocr.state !== 'reading' && (
+            <div className="faint" style={{ fontSize: 12.5, marginTop: 8 }}>
+              No number typed — you can still save: the plate photo goes with the ticket and the control room reads it.
+            </div>
+          )}
           {offender && (
             <div className="g-note g-note-danger">
               <Siren size={15} />
@@ -512,7 +519,11 @@ export default function CaptureFlow({ user, editing, onCancel, onSaved }: { user
           {saving ? 'Saving…' : editing ? 'Save changes' : 'Save violation'}
         </button>
         <div className="faint" style={{ fontSize: 12, textAlign: 'center', marginTop: 6 }}>
-          {editing ? 'Not uploaded yet — your changes replace it before upload.' : 'Saved on this phone instantly — uploads automatically when online.'}
+          {editing
+            ? 'Not handed over yet — your changes replace it.'
+            : CABLE_ONLY
+              ? 'Saved on this phone instantly — hand it to the laptop by cable.'
+              : 'Saved on this phone instantly — uploads automatically when online.'}
         </div>
       </footer>
 

@@ -58,6 +58,8 @@ export default defineConfig(({ mode }) => ({
      * served from the cache — the sync engine must see real failures.
      */
     VitePWA({
+      // The Android app (mode "native") carries its files inside the app: no service worker.
+      disable: mode === 'native',
       registerType: 'prompt',
       injectRegister: null,
       manifest: {
@@ -79,7 +81,8 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         // woff2 only: every browser this app supports reads it; the .woff fallbacks would double the font download.
-        globPatterns: ['**/*.{js,css,html,png,svg,woff2,ico,gz}'],
+        // + the built-in offline street map (public/map, ~20 MB): the Patrol tab's map works with no network.
+        globPatterns: ['**/*.{js,css,html,png,svg,woff2,ico,gz}', 'map/**/*.{mvt,json}'],
         // The plate reader's WASM core is ~4 MB per build; the default 2 MB cap would silently skip it.
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallback: '/index.html',
@@ -99,5 +102,5 @@ export default defineConfig(({ mode }) => ({
   ],
   server: { host: true, port: Number(process.env.PORT_WEB) || 3357, strictPort: true, proxy },
   preview: { host: true, port: Number(process.env.PORT_WEB) || 3357, strictPort: true, proxy },
-  build: { chunkSizeWarningLimit: 1200 },
+  build: { chunkSizeWarningLimit: 1200, outDir: mode === 'native' ? 'dist-native' : 'dist' },
 }));

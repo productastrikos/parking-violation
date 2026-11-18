@@ -10,6 +10,7 @@
 import * as catalog from '../../shared/catalog.js';
 import type { Notice } from './notice';
 import type { FineSchedule } from './fines';
+import type { PatrolRoute } from './patrol';
 import { buildLabel } from './version';
 
 const sameOrigin = () => (typeof window === 'undefined' ? '' : window.location.origin);
@@ -17,6 +18,13 @@ export const API_URL: string = ((import.meta.env.VITE_API_URL as string | undefi
 export const SOCKET_URL: string = ((import.meta.env.VITE_SOCKET_URL as string | undefined) ?? '').replace(/\/$/, '') || API_URL || sameOrigin();
 /** Shown in Settings and reported by each phone (Field Team page), so a redeploy can be confirmed per device. */
 export const APP_VERSION = `1.1 · ${buildLabel()}`;
+
+/** The installable phone app (Android APK built with Capacitor, `npm run android:build`). */
+export const NATIVE_APP = import.meta.env.VITE_NATIVE === '1';
+/** No server and no network at all: tickets leave the phone by USB cable only (the Ministry
+ *  campus has no Wi-Fi). The app never calls the API, signs in with the built-in demo accounts,
+ *  and hands tickets over with "Send to laptop by cable". */
+export const CABLE_ONLY = import.meta.env.VITE_CABLE_ONLY === '1';
 
 export const photoUrl = (p: string) => (/^(https?:|blob:|data:)/.test(p) ? p : `${API_URL}${p}`);
 
@@ -70,6 +78,8 @@ export interface Violation {
   capturedOffline: boolean;
   receivedAt: number;
   clockSkewMs: number;
+  /** 'cable' = handed over by USB cable (read from the phone's ticket picture), not uploaded over a network. */
+  via?: 'cable';
   status: Status;
   history: { at: number; by: string; action: string; note?: string }[];
   edits?: { at: number; by: string; reason: string; changes: Record<string, { from: unknown; to: unknown }> }[];
@@ -189,6 +199,9 @@ export interface FieldPack {
   watchlist: Offender[];
   mine: { id: string; status: Status; voided: boolean; voidReason?: string; correction: Violation['correction']; edited: boolean; plate: Plate; type: string }[];
   fines?: FineSchedule;
+  /** This guard's patrol routes (online phones; offline phones scan them from the dashboard). */
+  routes?: PatrolRoute[];
+  serverTime?: number;
 }
 
 export interface Device {
@@ -201,6 +214,8 @@ export interface Device {
   online?: boolean;
   lastSeen?: number;
   lastSync?: number;
+  /** Last USB-cable handover from this phone. */
+  lastCable?: number;
   firstSeen?: number;
   pendingAtHello?: number;
   position?: { lat: number; lng: number; accuracy: number | null; demo: boolean; at: number };

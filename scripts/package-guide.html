@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Park Patrol — Start here</title>
+<style>
+  :root { --bg: #f6f7f9; --card: #ffffff; --text: #111827; --muted: #4b5563; --line: #e5e7eb; --accent: #4f46e5; --accent-bg: #eef2ff; --warn-bg: #fff7ed; --warn: #9a3412; --code: #f3f4f6; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1115; --card: #171a21; --text: #e5e7eb; --muted: #9ca3af; --line: #2a2f3a; --accent: #8b8cf8; --accent-bg: #1e1b4b; --warn-bg: #2a1a0e; --warn: #fdba74; --code: #222632; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15.5px/1.6 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 21px; margin: 34px 0 10px; padding-top: 6px; border-top: 1px solid var(--line); }
+  h3 { font-size: 17px; margin: 20px 0 6px; }
+  p, li { color: var(--text); }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  code, kbd { background: var(--code); border-radius: 5px; padding: 1px 6px; font: 13.5px ui-monospace, Consolas, monospace; }
+  .pill { display: inline-block; background: var(--accent-bg); color: var(--accent); border-radius: 999px; padding: 1px 10px; font-size: 12.5px; font-weight: 600; }
+  .warn { background: var(--warn-bg); color: var(--warn); border-radius: 10px; padding: 10px 14px; }
+  .qr { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .qr img { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 10px; }
+  ol, ul { padding-left: 22px; }
+  li + li { margin-top: 4px; }
+  .muted { color: var(--muted); }
+  @media (max-width: 560px) { th, td { padding: 8px; } h1 { font-size: 24px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Park Patrol — offline demo</h1>
+  <p class="sub">A guard issues a fine on a phone with <b>no network</b>. The phone is plugged into a laptop with a <b>USB cable</b>, and the ticket, photos and fine appear on the laptop. Nothing uses Wi-Fi or the internet. <span class="pill">build {{BUILD}}</span></p>
+  {{APK_NOTE}}
+
+  <table>
+    <tr><th>Folder</th><th>What it is</th><th>For</th></tr>
+    <tr><td><b>Laptop - Windows</b></td><td>The control room: dashboard + storage. Double-click to start.</td><td>Windows 10 / 11</td></tr>
+    <tr><td><b>Laptop - macOS</b></td><td>The same, for a Mac.</td><td>macOS 12 or later (Apple Silicon and Intel)</td></tr>
+    <tr><td><b>Android</b></td><td><code>ParkPatrol.apk</code> — the guard's app. Install by tapping it.</td><td>Android 7 or later</td></tr>
+    <tr><td><b>iPhone</b></td><td>QR code to the guard's app (web app). An iPhone cannot install apps from a zip.</td><td>iOS 16 or later</td></tr>
+  </table>
+
+  <h2>1 · Set up the laptop (once)</h2>
+  <p>First <b>unzip the whole package</b> (Windows: right-click the zip → <i>Extract All</i>; Mac: double-click it). Do not start anything from inside the zip.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Windows</h3>
+      <ol>
+        <li>Open <b>Laptop - Windows</b> and double-click <b>Start Park Patrol.bat</b>.</li>
+        <li>If Windows says <i>“Windows protected your PC”</i>: click <b>More info</b> → <b>Run anyway</b>.</li>
+        <li>A black window opens and the dashboard opens in the browser at <code>http://localhost:4357</code>. Sign in <code>supervisor</code> / <code>Astrikos2026</code>.</li>
+        <li>Keep the black window open. Close it to stop Park Patrol.</li>
+        <li><b>Using an iPhone?</b> Install the <b>Apple Devices</b> app from the Microsoft Store once, while online — it brings the iPhone's USB driver.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>macOS</h3>
+      <ol>
+        <li>Open <b>Laptop - macOS</b> and double-click <b>Start Park Patrol.command</b>.</li>
+        <li>The first time, macOS blocks it. <b>macOS 15+:</b> System Settings → Privacy &amp; Security → <i>“Start Park Patrol.command” was blocked</i> → <b>Open Anyway</b>. <b>macOS 14 or older:</b> right-click the file → <b>Open</b> → <b>Open</b>.</li>
+        <li>Terminal opens and the dashboard opens in the browser at <code>http://localhost:4357</code>. Sign in <code>supervisor</code> / <code>Astrikos2026</code>.</li>
+        <li>Keep the Terminal window open. Close it to stop Park Patrol.</li>
+      </ol>
+    </div>
+  </div>
+  <p class="muted">The laptop works with Wi-Fi off — including the map: a street map of Abu Dhabi is built in. <b>Reset demo data</b> (next to the start file) clears the laptop's tickets, routes and patrol reports for a fresh demo.</p>
+
+  <h2>2 · Install the app on the phones (once)</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Android</h3>
+      <ol>
+        <li>Copy <code>Android/ParkPatrol.apk</code> to the phone — e.g. plug it into the laptop, choose <b>File transfer</b> on the phone, and drop the file into <i>Download</i>.</li>
+        <li>On the phone open <b>Files</b> → <b>Download</b> → tap <b>ParkPatrol.apk</b>. Allow <i>Install unknown apps</i> for Files when asked → <b>Install</b>.</li>
+        <li>If Google Play Protect warns about an unknown app: <b>More details</b> → <b>Install anyway</b>.</li>
+        <li>Open <b>Park Patrol</b>, allow <b>Camera</b> and <b>Location</b>, sign in <code>guard1</code> / <code>Astrikos2026</code>.</li>
+        <li><b>Printer:</b> see <i>The fine printer</i> below — pair it once, then choose it in Park Patrol.</li>
+      </ol>
+      <p class="muted">The Android app never needs the internet — not even for the first sign-in.</p>
+    </div>
+    <div class="card">
+      <h3>iPhone</h3>
+      <p>Apple only lets iPhones install signed apps, so the iPhone uses the <b>web app</b>. It needs internet <b>once</b>, during setup:</p>
+      <div class="qr"><img src="{{QR}}" alt="QR code to {{IPHONE_URL}}"><div>
+        <ol>
+          <li>Scan the code with the Camera (or open <code>{{IPHONE_URL}}</code> in <b>Safari</b>).</li>
+          <li>Tap Share → <b>Add to Home Screen</b>, then open <b>Park Patrol</b> from the Home Screen.</li>
+          <li>Sign in once <b>while online</b>: <code>guard1</code> / <code>Astrikos2026</code>.</li>
+        </ol>
+      </div></div>
+      <p class="muted">From then on it works with no network. The same QR code is in the <b>iPhone</b> folder.</p>
+    </div>
+  </div>
+  <p class="muted">Optional on both: Settings → <b>GPS source</b> → <b>Demo</b> puts the pins in Abu Dhabi.</p>
+
+  <h3>The fine printer — NETUM NT-1809 (58 mm, Bluetooth)</h3>
+  <div class="card">
+    <ol>
+      <li><b>Check the printer:</b> load the 58 mm thermal roll (shiny side toward the print head), charge it, then print its self-test page: printer off → hold <b>Feed</b> → switch on → release Feed when the red light comes on. If the print is faint, set density level 3 (printer off → hold Feed → switch on → release when the red light goes on-off-on).</li>
+      <li><b>Pair it with the Android phone:</b> Android <b>Settings → Bluetooth</b> → pair the printer. PIN <code>0000</code> or <code>1234</code>.</li>
+      <li><b>Choose it in Park Patrol:</b> Settings → <b>Fine printer</b> → <b>Bluetooth printer (direct)</b> → <b>Choose printer</b> → tap the printer. Allow <b>Nearby devices</b> when asked. Paper width: <b>58 mm</b>. Press <b>Test print</b>.</li>
+      <li>After that, every new violation offers <b>Print notice</b>; the notice comes out of the printer in a few seconds. One printer talks to one phone at a time — switch it off and on to move it to another phone.</li>
+    </ol>
+    <p class="muted"><b>iPhone:</b> this printer has no iPhone app from NETUM and does not support AirPrint, and an iPhone web app cannot use Bluetooth. Print from an Android phone in the demo; on the iPhone use <b>Issue without printing</b>. (A Bluetooth-enabled browser such as Bluefy can work if the printer also offers Bluetooth LE — test before relying on it.)</p>
+  </div>
+
+  <h2>Patrol routes (optional, 2 minutes once)</h2>
+  <div class="card">
+    <ol>
+      <li><b>On the laptop</b>: Field Team → <b>Patrol routes</b>. Two sample routes are there; <b>New route</b> to draw your own — click the map to place checkpoints in order, choose the guard, days and shift → <b>Save route</b>. The map is built in — it works with no internet.</li>
+      <li>Press <b>Code for phone</b> on the guard's route — a QR code appears.</li>
+      <li><b>On the guard's phone</b>: <b>Patrol</b> tab → <b>Scan route code</b> → point the camera at the laptop screen (or take a photo of it). The route appears on the phone's offline map.</li>
+    </ol>
+  </div>
+
+  <h2>3 · The demo (about 5 minutes)</h2>
+  <table>
+    <tr><th>#</th><th>Do</th><th>Show / say</th></tr>
+    <tr><td>1</td><td>Laptop Wi-Fi <b>off</b>. Phone in <b>airplane mode</b>.</td><td>“No network anywhere.”</td></tr>
+    <tr><td>2</td><td>Phone: <b>Record a violation</b> → vehicle photo, <b>Scan plate</b> (read on the phone — or <b>Photo only</b> to skip reading), type → <b>Save</b>.</td><td>“Saved on the phone.”</td></tr>
+    <tr><td>3</td><td>Issue the fine: <b>Print notice</b> on the pocket printer — or <b>Issue without printing</b> if there is no printer.</td><td>The printed notice: amount, offence code, due date.</td></tr>
+    <tr><td>4</td><td>Home → <b>Send to laptop by cable</b> → save the pictures. Android: <b>Save to this phone</b>. iPhone: <b>Save to Photos</b> → <i>Save Images</i>.</td><td>“Each ticket is one picture with its data in a code.”</td></tr>
+    <tr><td>5</td><td>Plug in the <b>USB cable</b>. iPhone: unlock → <b>Allow / Trust</b>. Android: notification → USB → <b>File transfer</b>.</td><td>“Only a cable.”</td></tr>
+    <tr><td>6</td><td>Laptop: <b>Receive from phone</b> (Dashboard → Live feed) → <b>Choose pictures from the phone</b>.</td><td></td></tr>
+    <tr><td>7</td><td>Windows: <b>This PC</b> → the phone → iPhone: <i>Internal Storage › DCIM › newest folder</i>. Android: <i>Internal storage › Pictures › ParkPatrol</i>. Select the new pictures (Ctrl+A is fine — other photos are skipped) → <b>Open</b>.</td><td></td></tr>
+    <tr><td>8</td><td>Watch the list fill: <b>Imported · Fine AED …</b>. The ticket appears in the live feed marked <b>By cable</b>, with a pin on the map.</td><td>“From the phone to the control room, by cable.”</td></tr>
+    <tr><td>9</td><td>Click <b>Open</b> on a row.</td><td>Photos, fine, officer, and the history line <i>Received over USB cable</i>.</td></tr>
+    <tr><td>10</td><td>Optional: pick the same pictures again.</td><td>“Already on this laptop” — never counted twice.</td></tr>
+    <tr><td>11</td><td><b>Patrol:</b> phone → <b>Patrol</b> → <b>Start patrol</b>. With Settings → GPS source → <b>Demo</b>, tap <b>Demo: walk the route</b> — the checkpoints tick off on the map (about 90 seconds). With real GPS they tick off as the guard walks. Then <b>Finish patrol</b>.</td><td>“The route came from the control room as a code — no network.”</td></tr>
+    <tr><td>12</td><td>Phone → <b>Send to laptop by cable</b> (the patrol report is a picture too) → laptop <b>Receive from phone</b>.</td><td>Field Team → Patrol routes shows <b>4/4 checkpoints, finished …, by cable</b>.</td></tr>
+  </table>
+  <p class="muted"><b>On a Mac</b>, the browser cannot open the phone directly: copy the pictures off first (iPhone: <i>Image Capture</i> app; Android: <i>Android File Transfer</i> or OpenMTP), then drag them onto the <b>Receive from phone</b> panel.</p>
+
+  <h2>4 · If something goes wrong</h2>
+  <table>
+    <tr><th>Problem</th><th>Fix</th></tr>
+    <tr><td>The phone is not under <b>This PC</b></td><td>Use a <b>data</b> cable (some only charge). iPhone: unlock it, tap <b>Allow/Trust</b>, replug; make sure Apple Devices is installed. Android: notification → USB → <b>File transfer</b>.</td></tr>
+    <tr><td>iPhone share sheet has no <i>Save Images</i></td><td>Close it, press and hold each picture → <b>Save to Photos</b>, then tap <b>I have saved them to Photos</b>.</td></tr>
+    <tr><td>The iPhone's DCIM folder is empty</td><td>Wait a few seconds and reopen it; keep the iPhone unlocked.</td></tr>
+    <tr><td>The file window cannot open the phone</td><td>In File Explorer copy the pictures to the Desktop, then drag them onto the <b>Receive from phone</b> panel.</td></tr>
+    <tr><td>The plate is not read</td><td>Take the plate photo anyway (<b>Photo only</b>, or the shutter → <b>Use photo</b>) and type the number — or save without it: the plate photo goes with the ticket and the control room reads it. The reader works offline; it needs a sharp, straight-on photo of the plate.</td></tr>
+    <tr><td>The printer does not print</td><td>Printer on and charged, paired in Android Settings → Bluetooth (PIN 0000 or 1234), chosen in Park Patrol → Settings → Fine printer, and not connected to another phone or app at the same time. Try <b>Test print</b>. Still nothing: switch the printer off and on, or use <b>RawBT</b>. No printer at hand: <b>Issue without printing</b>.</td></tr>
+    <tr><td>Prints blank or faint</td><td>Blank: the roll is in back to front (thermal side must face the print head). Faint: set density level 3 (see <i>The fine printer</i>), or clean the print head.</td></tr>
+    <tr><td>“No ticket code found”</td><td>The picture was cropped, edited or is a screenshot. Save it again from the app.</td></tr>
+    <tr><td>“… is not on this laptop's team list”</td><td>That guard account is not on the laptop; the ticket is still imported under that name. <code>guard1</code>–<code>guard4</code> are on both.</td></tr>
+    <tr><td>The dashboard does not open</td><td>Open <code>http://localhost:4357</code> yourself. If the window says the port is in use, Park Patrol is already running — use that one.</td></tr>
+    <tr><td>The route code will not scan</td><td>Tap <b>Take a photo of the code</b> and photograph the laptop screen, filling the frame. Turn the screen brightness up. A code for another guard is refused — show the right guard's code.</td></tr>
+    <tr><td>Checkpoints do not tick off</td><td>Real GPS: walk within the route's radius (40 m by default; set per route on the laptop), outdoors. Demo: Settings → GPS source → Demo, then <b>Demo: walk the route</b>. Or tap <b>I'm at …</b>.</td></tr>
+    <tr><td>Map shows circles, not streets</td><td>This copy has no built-in map (the package normally includes Abu Dhabi). The patrol areas are drawn instead; pins and routes still work.</td></tr>
+  </table>
+
+  <h2>5 · Accounts and what this demo is</h2>
+  <ul>
+    <li>Laptop: <code>supervisor</code> or <code>admin</code> / <code>Astrikos2026</code>. Phones: <code>guard1</code> … <code>guard4</code> / <code>Astrikos2026</code>.</li>
+    <li>The laptop starts with sample tickets so the dashboard is not empty.</li>
+    <li>The Android app is signed for testing (installed directly, not from Google Play). It prints to a paired Bluetooth thermal printer (ESC/POS), through RawBT, the printer maker's app, or the Android print dialog — or issues the fine without paper.</li>
+    <li>This is a demo of the workflow. The production design — the laptop enrols each phone, signed transfer files, automatic copy when the cable is plugged in — is described in the project's <code>OFFLINE-ARCHITECTURE.md</code>.</li>
+  </ul>
+</main>
+</body>
+</html>
