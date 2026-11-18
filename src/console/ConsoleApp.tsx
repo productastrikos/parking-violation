@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ChevronLeft, RefreshCw, ChevronRight, Eye, EyeOff, LayoutDashboard, ListChecks, Loader2, Lock, LogOut, Menu, Moon, Sparkles, Sun, Users, X,
+  AlertTriangle, ChevronLeft, RefreshCw, ChevronRight, Eye, EyeOff, LayoutDashboard, ListChecks, Loader2, Lock, LogOut, Menu, Moon, Sparkles, Sun, Usb, Users, X,
 } from 'lucide-react';
 import { request, ApiError, type User, type Advisory } from '../lib/api';
 import { Brand, ClientLogo, PoweredBy, applyTheme, useTheme } from '../lib/ui';
@@ -243,6 +243,11 @@ function Shell({ session, onSignOut }: { session: ConsoleSession; onSignOut: () 
             <div className="faint">{TITLES[page].sub}</div>
           </div>
           <div className="c-header-right">
+            {/* On every page: tickets and patrol reports from a phone, over the USB cable. */}
+            <button className="c-receive-btn" onClick={() => setCableOpen(true)} aria-label="Receive from phone" title="Receive tickets and patrol reports from a phone over the USB cable">
+              <Usb size={15} />
+              <span>Receive from phone</span>
+            </button>
             <AdvisoryButton open={advOpen} setOpen={setAdvOpen} count={urgentAi} live={live} nav={nav} />
             {live.live ? (
               <span className="chip chip-success c-live">

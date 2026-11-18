@@ -26,7 +26,7 @@
 import { useSyncExternalStore } from 'react';
 import { isIOS } from '../offline/device';
 import { canvasToEscPos } from './escpos';
-import { DEFAULT_LAYOUT, printImage, type NoticeLayout } from '../../lib/notice';
+import { DEFAULT_LAYOUT, currentAuthority, printImage, type NoticeLayout } from '../../lib/notice';
 import { NATIVE_APP } from '../../lib/api';
 import { FinePrinter, nativeMessage, type PairedPrinter } from './nativePrinter';
 
@@ -64,7 +64,10 @@ function defaults(): PrinterSettings {
 let settings: PrinterSettings = (() => {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...defaults(), ...(JSON.parse(raw) as Partial<PrinterSettings>) };
+    if (raw) {
+      const s = { ...defaults(), ...(JSON.parse(raw) as Partial<PrinterSettings>) };
+      return { ...s, authority: currentAuthority(s.authority) };
+    }
   } catch {
     /* private mode / bad JSON */
   }

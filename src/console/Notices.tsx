@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Eye, FileText, History, Loader2, Pencil, Printer, ReceiptText, Smartphone, Monitor, AlertTriangle } from 'lucide-react';
 import { VIOLATION_TYPES, fmtDate, fmtDateTime, type Violation, type NoticePrint } from '../lib/api';
-import { asCopy, buildNotice, downloadImage, fmtAed, printImage, renderNotice, DEFAULT_LAYOUT, type Notice, type NoticeLayout } from '../lib/notice';
+import { asCopy, buildNotice, currentAuthority, downloadImage, fmtAed, printImage, renderNotice, DEFAULT_LAYOUT, type Notice, type NoticeLayout } from '../lib/notice';
 import { useFines, FINE_EDITOR_ROLES, MAX_FINE } from '../lib/fines';
 import type { Live } from './useLive';
 import { Modal, useToast } from './parts';
@@ -34,7 +34,8 @@ const COPY_LABEL = { original: 'Original', duplicate: 'Duplicate', office: 'Offi
 function currentLayout(all: Violation[]): NoticeLayout {
   let best: NoticePrint | null = null;
   for (const v of all) for (const p of v.notices ?? []) if (p.surface === 'app' && (!best || p.at > best.at)) best = p;
-  return best?.notice.layout ?? DEFAULT_LAYOUT;
+  const l = best?.notice.layout ?? DEFAULT_LAYOUT;
+  return { ...l, authority: currentAuthority(l.authority) };
 }
 
 const sourceOf = (v: Violation) => ({ ...v, photoCount: v.photos.length || 1 });
@@ -184,7 +185,7 @@ function NoticeViewer({ v, live, notice, title, log, onClose }: { v: Violation; 
             <dt>Pay by</dt>
             <dd>{fmtDate(notice.dueAt)}</dd>
             <dt>Authority</dt>
-            <dd>{notice.layout.authority}</dd>
+            <dd>{currentAuthority(notice.layout.authority)}</dd>
             {log && (
               <>
                 <dt>Printed</dt>

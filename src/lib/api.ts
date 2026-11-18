@@ -17,14 +17,41 @@ const sameOrigin = () => (typeof window === 'undefined' ? '' : window.location.o
 export const API_URL: string = ((import.meta.env.VITE_API_URL as string | undefined) ?? '').replace(/\/$/, '');
 export const SOCKET_URL: string = ((import.meta.env.VITE_SOCKET_URL as string | undefined) ?? '').replace(/\/$/, '') || API_URL || sameOrigin();
 /** Shown in Settings and reported by each phone (Field Team page), so a redeploy can be confirmed per device. */
-export const APP_VERSION = `1.1 · ${buildLabel()}`;
+export const APP_VERSION_NUMBER = '1.2';
+export const APP_VERSION = `${APP_VERSION_NUMBER} · ${buildLabel()}`;
 
 /** The installable phone app (Android APK built with Capacitor, `npm run android:build`). */
 export const NATIVE_APP = import.meta.env.VITE_NATIVE === '1';
-/** No server and no network at all: tickets leave the phone by USB cable only (the Ministry
- *  campus has no Wi-Fi). The app never calls the API, signs in with the built-in demo accounts,
- *  and hands tickets over with "Send to laptop by cable". */
-export const CABLE_ONLY = import.meta.env.VITE_CABLE_ONLY === '1';
+/** Built offline-only (the Android app): there is no server for it at all. */
+export const CABLE_ONLY_BUILD = import.meta.env.VITE_CABLE_ONLY === '1';
+const OFFLINE_KEY = 'pp.offlineMode';
+/**
+ * OFFLINE MODE — no server and no network at all: tickets leave the phone by USB cable only (the
+ * Ministry campus has no Wi-Fi). The app never calls the API, signs in with the phone's saved
+ * sign-in or the built-in demo accounts, and hands tickets over with "Send to laptop by cable".
+ * Always on in the Android app; the web app's guard switches it in Settings → Online (read once at
+ * start — switching restarts the app, so every part of it follows the same mode).
+ */
+export const CABLE_ONLY: boolean =
+  CABLE_ONLY_BUILD ||
+  (() => {
+    try {
+      return typeof localStorage !== 'undefined' && localStorage.getItem(OFFLINE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  })();
+/** Settings → Online switch (web app). Restarts the app in the chosen mode. */
+export function setOfflineMode(offline: boolean) {
+  if (CABLE_ONLY_BUILD) return;
+  try {
+    if (offline) localStorage.setItem(OFFLINE_KEY, '1');
+    else localStorage.removeItem(OFFLINE_KEY);
+  } catch {
+    /* private mode — nothing to remember */
+  }
+  window.location.reload();
+}
 
 export const photoUrl = (p: string) => (/^(https?:|blob:|data:)/.test(p) ? p : `${API_URL}${p}`);
 

@@ -24,11 +24,11 @@ The Android app saves ticket pictures to **Pictures › ParkPatrol** (the laptop
 ## 1. One-time setup (do it with internet, the day before)
 
 ### a. Publish this build to the phones' site
-The phones run the app from `https://parking.astrikos.xyz/app`. Deploy this version there first (see `DEPLOY.md`), or the phones will not have **Send to laptop by cable**.
+The phones run the app from `https://parking.astrikos.xyz:8443/app` (the `:8443` is required). Deploy this version there first (see `DEPLOY.md`), or the phones will not have **Send to laptop by cable**.
 
 ### b. Each demo phone
-1. Open `https://parking.astrikos.xyz/app` — **iPhone: Safari**, **Android: Chrome**.
-2. Install it: iPhone → Share → **Add to Home Screen**. Android → ⋮ → **Install app**.
+1. Open `https://parking.astrikos.xyz:8443/app` in **Chrome** (iPhone and Android). On iPhone, scan the QR code from Chrome (press and hold the Chrome icon → Scan QR Code) — the Camera app opens Safari.
+2. Install it: iPhone Chrome → Share (address bar) → **Add to Home Screen** (iOS 16.4+). Android Chrome → ⋮ → **Install app**.
 3. Open the **installed** app and sign in once while online (e.g. `guard1` / `Astrikos2026`). This is what lets it sign in offline later.
 4. If the app shows **A new version is ready — tap to update**, tap it (while online) so the phone has this build.
 5. Optional: Settings → **GPS source** → **Demo** so pins land in Abu Dhabi.

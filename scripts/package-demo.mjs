@@ -24,7 +24,7 @@ const cache = path.join(rel, '.cache');
 // Built in a private staging folder (and only that is ever deleted): a copy someone unzipped or is
 // running — e.g. release/ParkPatrol-Demo — is never touched by a rebuild.
 const out = path.join(rel, '.build', 'ParkPatrol-Demo');
-const IPHONE_URL = process.env.IPHONE_URL || 'https://parking.astrikos.xyz/app';
+const IPHONE_URL = process.env.IPHONE_URL || 'https://parking.astrikos.xyz:8443/app'; // the site is served on :8443 only
 const NODE_VERSION = process.version; // the macOS runtimes match the Node.js this was built with (Windows reuses it as is)
 const SERVER_DEPS = ['express', 'cors', 'compression', 'multer', 'socket.io'];
 
@@ -163,7 +163,8 @@ if (haveApk) {
 
 // iPhone
 fs.mkdirSync(path.join(out, 'iPhone'), { recursive: true });
-await QRCode.toFile(path.join(out, 'iPhone', 'Scan with the iPhone camera.png'), IPHONE_URL, { width: 640, margin: 2 });
+await QRCode.toFile(path.join(out, 'iPhone', 'Scan in Chrome on the iPhone.png'), IPHONE_URL, { width: 640, margin: 2 });
+write(path.join(out, 'iPhone', 'Web app address.txt'), `Open in Chrome on the iPhone:\n${IPHONE_URL}\n`, true);
 const qr = await QRCode.toDataURL(IPHONE_URL, { width: 360, margin: 1 });
 
 // The guide

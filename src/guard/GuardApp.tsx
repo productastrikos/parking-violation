@@ -17,11 +17,12 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   AlertTriangle, Camera, CheckCircle2, ChevronRight, Eye, EyeOff, Home, List, Loader2, Lock, LogOut, PlusSquare, RefreshCw, Settings, Share, Smartphone, Trash2,
-  User as UserIcon, WifiOff, X, RotateCcw, UploadCloud, Hourglass, Info, Pencil, Flag, Sparkles, TrendingUp, TrendingDown, Siren, Search, FlaskConical, Crosshair, Moon, Sun, Ban, Gavel, Clock, Printer, Usb,
+  User as UserIcon, Wifi, WifiOff, X, RotateCcw, UploadCloud, Hourglass, Info, Pencil, Flag, Sparkles, TrendingUp, TrendingDown, Siren, Search, FlaskConical, Crosshair, Moon, Sun, Ban, Gavel, Clock, Printer, Usb, HelpCircle, BadgeInfo,
 } from 'lucide-react';
 import { registerSW } from 'virtual:pwa-register';
-import { watchVersion } from '../lib/version';
-import { request, ApiError, APP_VERSION, CABLE_ONLY, NATIVE_APP, typeOf, areaOf, fmtDateTime, fmtTime, ago, statusLabel, type User } from '../lib/api';
+import { buildLabel, watchVersion } from '../lib/version';
+import { request, ApiError, APP_VERSION, APP_VERSION_NUMBER, CABLE_ONLY, CABLE_ONLY_BUILD, NATIVE_APP, setOfflineMode, typeOf, areaOf, fmtDateTime, fmtTime, ago, statusLabel, type User } from '../lib/api';
+import { HelpQA } from './HelpQA';
 import { demoSignIn } from './offline/demoRoster';
 import { ClientLogo, PlateChip, PoweredBy, TypeIcon, useNow, useTheme, applyTheme } from '../lib/ui';
 import { allRecords, deleteUnsynced, photosFor, pruneSynced, queueOp, type LocalRecord } from './offline/db';
@@ -100,8 +101,9 @@ export function setCaptureOpen(open: boolean) {
   captureOpen = open;
   if (!open) applyUpdateIfIdle();
 }
+// Offline mode never reaches for the network — not even to look for a new version.
 const checkForUpdate = () => {
-  if (navigator.onLine) void swReg?.update().catch(() => {});
+  if (navigator.onLine && !CABLE_ONLY) void swReg?.update().catch(() => {});
 };
 // The installed phone app carries its files inside the app — no service worker, no web updates.
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !NATIVE_APP) {
@@ -120,7 +122,7 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator && !NATIVE_APP
     },
   });
   if (navigator.serviceWorker.controller) swState.offlineReady = true;
-  watchVersion(checkForUpdate, 5 * 60 * 1000);
+  if (!CABLE_ONLY) watchVersion(checkForUpdate, 5 * 60 * 1000);
 }
 const useSw = () =>
   useSyncExternalStore(
@@ -283,8 +285,19 @@ function GuardSignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
           {sync.online === false && !CABLE_ONLY ? 'Sign in offline' : 'Sign in'}
         </button>
         <p className="signin-hint">
-          {CABLE_ONLY ? 'Stand-alone app — no network used; tickets go to the laptop by USB cable.' : 'Works without internet after your first sign-in on this phone.'} Demo: guard1 … guard4 · Astrikos2026
+          {CABLE_ONLY_BUILD
+            ? 'Stand-alone app — no network used; tickets go to the laptop by USB cable.'
+            : CABLE_ONLY
+              ? 'Offline mode — no internet used; tickets go to the laptop by USB cable.'
+              : 'Works without internet after your first sign-in on this phone.'}{' '}
+          Demo: guard1 … guard4 · Astrikos2026
         </p>
+        {!CABLE_ONLY_BUILD && (
+          // Also here, not only in Settings: a phone with no internet that never signed in online can still start.
+          <button type="button" className="btn btn-ghost btn-sm g-mode-link" onClick={() => setOfflineMode(!CABLE_ONLY)}>
+            {CABLE_ONLY ? <Wifi size={14} /> : <WifiOff size={14} />} {CABLE_ONLY ? 'Go online' : 'No internet? Use offline mode'}
+          </button>
+        )}
         <PoweredBy />
       </form>
     </div>
@@ -297,7 +310,7 @@ function ConnBadge({ compact = false }: { compact?: boolean }) {
   if (CABLE_ONLY)
     return (
       <span className="chip chip-info n-chip">
-        <Usb size={13} /> Cable mode{s.pending ? ` · ${s.pending} on phone` : ''}
+        <WifiOff size={13} /> Offline mode{s.pending ? ` · ${s.pending} on phone` : ''}
       </span>
     );
   if (s.syncing && s.progress)
@@ -513,12 +526,14 @@ function HomeTab({
   useEffect(() => {
     void reportsToHandOver().then((l) => setPatrolsPending(l.length));
   }, [pv]);
-  const today = useMemo(() => {
+  const todaysOwn = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    return recs.filter((r) => r.capturedAt >= d.getTime() && r.guardId === session.user.id).length;
+    return recs.filter((r) => r.capturedAt >= d.getTime() && r.guardId === session.user.id);
   }, [recs, session.user.id]);
-  const outlook = pack?.outlook;
+  const today = todaysOwn.length;
+  // The cached outlook is for the area of whoever loaded it — show it only to a guard of that area.
+  const outlook = pack && pack.area === session.user.area ? pack.outlook : null;
 
   return (
     <>
@@ -526,11 +541,14 @@ function HomeTab({
       {CABLE_ONLY ? (
         <section className="n-card g-status is-online">
           <div className="g-status-icon">
-            <Usb size={22} />
+            <WifiOff size={22} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="g-status-title">Cable mode — no network used</div>
-            <div className="g-status-sub">Everything is saved on this phone. Hand tickets to the laptop with Send to laptop by cable.</div>
+            <div className="g-status-title">Offline mode — no internet used</div>
+            <div className="g-status-sub">
+              Everything is saved on this phone. Hand tickets to the laptop with Send to laptop by cable.
+              {!CABLE_ONLY_BUILD && ' To upload over the internet, switch Online on in Settings.'}
+            </div>
           </div>
         </section>
       ) : (
@@ -585,23 +603,34 @@ function HomeTab({
         <Camera size={22} /> Record a violation
       </button>
 
-      {(onPhone.length > 0 || patrolsPending > 0) && (
-        <button className="n-card g-ai-card" onClick={() => onCable(onPhone.map((r) => r.id))}>
-          <div className="g-ai-head">
-            <span className="g-ai-brand">
-              <Usb size={14} /> Send to laptop by cable
-            </span>
-            <ChevronRight size={16} className="faint" />
-          </div>
-          <div className="g-ai-title">
-            {onPhone.length} ticket{onPhone.length === 1 ? '' : 's'} on this phone
-            {patrolsPending ? ` · ${patrolsPending} patrol report${patrolsPending === 1 ? '' : 's'}` : ''}
-          </div>
-          <div className="g-ai-sub">
-            {notSaved || patrolsPending ? `${notSaved + patrolsPending} not yet saved for the laptop · no network needed` : 'All saved for the laptop — connect the cable'}
-          </div>
-        </button>
-      )}
+      {/* Always here, online or offline: the cable is the hand-over that never needs a network. */}
+      <button className="n-card g-ai-card g-cable-card" onClick={() => onCable(onPhone.length ? onPhone.map((r) => r.id) : todaysOwn.map((r) => r.id))}>
+        <div className="g-ai-head">
+          <span className="g-ai-brand">
+            <Usb size={14} /> Send to laptop by cable
+          </span>
+          <ChevronRight size={16} className="faint" />
+        </div>
+        <div className="g-ai-title">
+          {onPhone.length || patrolsPending ? (
+            <>
+              {onPhone.length} ticket{onPhone.length === 1 ? '' : 's'} on this phone
+              {patrolsPending ? ` · ${patrolsPending} patrol report${patrolsPending === 1 ? '' : 's'}` : ''}
+            </>
+          ) : (
+            'Nothing new to hand over'
+          )}
+        </div>
+        <div className="g-ai-sub">
+          {onPhone.length || patrolsPending
+            ? notSaved || patrolsPending
+              ? `${notSaved + patrolsPending} not yet saved for the laptop · no network needed`
+              : 'All saved for the laptop — connect the cable'
+            : todaysOwn.length
+              ? `Tap to send today's ${todaysOwn.length} ticket${todaysOwn.length === 1 ? '' : 's'} again — the laptop skips any it already has`
+              : 'New tickets and patrol reports appear here · no network needed'}
+        </div>
+      </button>
 
       {outlook && (
         <button className="n-card g-ai-card" onClick={onPatrol}>
@@ -661,7 +690,7 @@ function InstallHint() {
         <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
           {isIOS() ? (
             <>
-              In Safari tap <Share size={13} style={{ verticalAlign: '-2px' }} /> Share, then <b>Add to Home Screen</b>
+              Tap <Share size={13} style={{ verticalAlign: '-2px' }} /> Share (in Chrome: the share icon in the address bar), then <b>Add to Home Screen</b>
               <PlusSquare size={13} style={{ verticalAlign: '-2px', marginLeft: 4 }} />. Open it from the icon and sign in once while online.
             </>
           ) : (
@@ -940,11 +969,9 @@ function RecordSheet({
             </button>
           )}
           <div className="g-sheet-actions">
-            {!synced && (
-              <button className="btn btn-lg" onClick={onCable}>
-                <Usb size={16} /> Send to laptop
-              </button>
-            )}
+            <button className="btn btn-lg" onClick={onCable}>
+              <Usb size={16} /> Send to laptop
+            </button>
             {canEdit && (
               <button className="btn btn-lg" onClick={onEdit}>
                 <Pencil size={16} /> Edit
@@ -1022,7 +1049,8 @@ function PatrolTab({ session, onCable, onToast }: { session: Session; onCable: (
         )}
       </>
     );
-  const o = pack.outlook;
+  const otherArea = pack.area !== session.user.area; // cached for a guard of another area
+  const o = otherArea ? null : pack.outlook;
   return (
     <>
       {panel}
@@ -1062,7 +1090,7 @@ function PatrolTab({ session, onCable, onToast }: { session: Session; onCable: (
             </ul>
           </>
         ) : (
-          <p className="muted">Not enough records in your area yet for an outlook.</p>
+          <p className="muted">{otherArea ? 'The outlook for your area loads the next time you sign in online on this phone.' : 'Not enough records in your area yet for an outlook.'}</p>
         )}
         <div className="g-ai-foot">{pack.engine} · forecast from the last 14 days · a supervisor decides deployment</div>
       </section>
@@ -1157,6 +1185,9 @@ function SettingsTab({ session, onSignOut }: { session: Session; onSignOut: () =
   const [name, setName] = useState('');
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [saved, setSaved] = useState(false);
+  const [askMode, setAskMode] = useState<'online' | 'offline' | null>(null);
+  const [qa, setQa] = useState(false);
+  const appKind = NATIVE_APP ? 'Android app' : isStandalone() ? 'Home Screen app' : 'Web app in the browser';
   useEffect(() => {
     void deviceInfo().then((d) => {
       setDev(d);
@@ -1182,6 +1213,52 @@ function SettingsTab({ session, onSignOut }: { session: Session; onSignOut: () =
             </div>
           </div>
           {session.offline ? <span className="chip chip-warning">offline sign-in</span> : <span className="chip chip-success">verified</span>}
+        </div>
+      </section>
+
+      <div className="n-group-label">Connection</div>
+      <section className="n-card n-group">
+        <div className="n-row">
+          <div className="n-row-icon">{CABLE_ONLY ? <WifiOff size={18} /> : <Wifi size={18} />}</div>
+          <div className="n-row-main">
+            <div className="n-row-title" id="online-switch">
+              Online
+            </div>
+            <div className="n-row-sub">
+              {CABLE_ONLY_BUILD
+                ? 'This app always works offline — tickets go to the laptop by USB cable.'
+                : CABLE_ONLY
+                  ? 'Off — works with no internet. Records stay on this phone until you send them to the laptop by cable.'
+                  : 'On — records upload to the control room when there is internet. Send to laptop by cable works too.'}
+            </div>
+          </div>
+          <Toggle on={!CABLE_ONLY} disabled={CABLE_ONLY_BUILD} labelledBy="online-switch" onChange={(on) => setAskMode(on ? 'online' : 'offline')} />
+        </div>
+      </section>
+
+      <div className="n-group-label">Help & version</div>
+      <section className="n-card n-group">
+        <button className="n-row pn-row-btn" onClick={() => setQa(true)}>
+          <div className="n-row-icon">
+            <HelpCircle size={18} />
+          </div>
+          <div className="n-row-main">
+            <div className="n-row-title">Q&amp;A</div>
+            <div className="n-row-sub">How to use the app — recording, fines, printer, cable, patrol</div>
+          </div>
+          <ChevronRight size={16} className="faint" />
+        </button>
+        <div className="n-row">
+          <div className="n-row-icon">
+            <BadgeInfo size={18} />
+          </div>
+          <div className="n-row-main">
+            <div className="n-row-title">Version</div>
+            <div className="n-row-sub">
+              {appKind} · {CABLE_ONLY ? 'offline' : 'online'} · build {buildLabel()}
+            </div>
+          </div>
+          <div className="n-row-value g-version">{APP_VERSION_NUMBER}</div>
         </div>
       </section>
 
@@ -1233,17 +1310,18 @@ function SettingsTab({ session, onSignOut }: { session: Session; onSignOut: () =
           </div>
         </div>
         {CABLE_ONLY ? (
-          <InfoRow label="Hand-over" value="USB cable only — no network" good />
+          <InfoRow label="Hand-over" value="USB cable only — no internet" good />
         ) : (
+          <InfoRow label="Server" value={`${s.online ? 'Reachable' : s.online === false ? 'Not reachable' : 'Checking'}${s.socket ? ' · live' : ''}`} />
+        )}
+        {!NATIVE_APP && (
           <>
-            <InfoRow label="Server" value={`${s.online ? 'Reachable' : s.online === false ? 'Not reachable' : 'Checking'}${s.socket ? ' · live' : ''}`} />
-            <InfoRow label="Offline mode" value={sw.offlineReady ? 'Ready — opens without internet' : 'Not ready (open once online over https)'} good={sw.offlineReady} />
+            <InfoRow label="App files on phone" value={sw.offlineReady ? 'Ready — opens without internet' : 'Not ready (open once online over https)'} good={sw.offlineReady} />
             <InfoRow label="Installed" value={isStandalone() ? 'Yes — Home Screen app' : 'No — in the browser'} good={isStandalone()} />
           </>
         )}
         <InfoRow label="Storage" value={persisted ? 'Protected from clean-up' : persisted === false ? 'Standard' : 'Unknown'} />
         <InfoRow label="Device id" value={`${dev?.deviceId.slice(0, 8) ?? '…'}…`} mono />
-        <InfoRow label="Version" value={APP_VERSION} />
       </section>
 
       <div className="n-group-label">Appearance</div>
@@ -1267,7 +1345,31 @@ function SettingsTab({ session, onSignOut }: { session: Session; onSignOut: () =
       <p className="faint" style={{ fontSize: 11, textAlign: 'center', margin: '14px 0 0' }}>
         <Clock size={11} style={{ verticalAlign: '-1px' }} /> Park Patrol {APP_VERSION} · Astrikos
       </p>
+
+      {qa && <HelpQA onClose={() => setQa(false)} />}
+      {askMode && (
+        <Confirm
+          title={askMode === 'offline' ? 'Switch to offline mode?' : 'Go online?'}
+          body={
+            askMode === 'offline'
+              ? 'The app restarts and stops using the internet. Records not uploaded yet stay on this phone — send them to the laptop by cable.'
+              : 'The app restarts and uploads records to the control room whenever there is internet. If it asks, sign in once while online.'
+          }
+          confirm={askMode === 'offline' ? 'Work offline' : 'Go online'}
+          onConfirm={() => setOfflineMode(askMode === 'offline')}
+          onCancel={() => setAskMode(null)}
+        />
+      )}
     </>
+  );
+}
+
+/** An on/off switch (role="switch") — Settings → Online. */
+function Toggle({ on, disabled, labelledBy, onChange }: { on: boolean; disabled?: boolean; labelledBy: string; onChange: (on: boolean) => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-labelledby={labelledBy} aria-label="Online" className={`g-toggle${on ? ' is-on' : ''}`} disabled={disabled} onClick={() => onChange(!on)}>
+      <span className="g-toggle-knob" />
+    </button>
   );
 }
 

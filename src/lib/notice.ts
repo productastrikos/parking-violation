@@ -4,7 +4,7 @@
  * (printer.ts). The same picture is the on-screen preview, so what the guard
  * sees is exactly what prints.
  *
- * Layout follows the usual municipal parking-ticket form: issuing authority,
+ * Layout follows the usual parking-ticket form: issuing authority (Ministry of Interior),
  * notice number and date, vehicle, offence (code, description, place, time),
  * the penalty and pay-by date, the issuing officer, a verification code,
  * payment/appeal terms and a signature line. The header is the AUTHORITY set
@@ -26,7 +26,10 @@ export interface NoticeLayout {
 export const DEFAULT_FOOTER =
   'Pay the fine within the period shown at any authorised payment centre or online, quoting the notice number. ' +
   'Unpaid fines may attract additional charges. To object, submit an appeal within 15 days of issue.';
-export const DEFAULT_LAYOUT: NoticeLayout = { paper: 58, authority: 'Municipal Parking Enforcement', department: 'Traffic & Parking Control Section', footer: DEFAULT_FOOTER, payDays: 30 };
+export const DEFAULT_LAYOUT: NoticeLayout = { paper: 58, authority: 'Ministry of Interior', department: 'Traffic & Parking Control Section', footer: DEFAULT_FOOTER, payDays: 30 };
+/** Earlier default headers — a phone (or the dashboard) still carrying one moves to the current default. */
+const RETIRED_AUTHORITIES = ['Municipal Parking Enforcement'];
+export const currentAuthority = (a: string | undefined) => (!a || RETIRED_AUTHORITIES.includes(a.trim()) ? DEFAULT_LAYOUT.authority : a);
 
 /**
  * original   first notice handed to the driver (issues the fine)
@@ -348,7 +351,8 @@ export async function renderNotice(n: Notice): Promise<HTMLCanvasElement> {
 
   p.gap(6);
   p.crest(46);
-  p.text(s.authority || 'Parking Enforcement', { size: 21, weight: 700, align: 'center', upper: true, lh: 1.2 });
+  // Notices issued under the old placeholder header re-draw under the current one.
+  p.text(currentAuthority(s.authority), { size: 21, weight: 700, align: 'center', upper: true, lh: 1.2 });
   if (s.department) p.text(s.department, { size: 16, align: 'center', lh: 1.2 });
   p.gap(4);
   p.rule('double');
